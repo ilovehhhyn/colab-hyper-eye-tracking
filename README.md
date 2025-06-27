@@ -35,14 +35,14 @@ pip install psychopy pylink numpy pillow
 - **Computer A**: 100.1.1.10
 - **Computer B**: 100.1.1.11
 - **EyeLink Host**: 100.1.1.1
-- ##IMPORTANT NOTE: the firewall between the two computers must be turned off, at least for each other. 
+- **!!!IMPORTANT NOTE: the firewall between the two computers must be turned off, at least for each other. 
 
 ### Ports
 - **Gaze Data Reception**: 8888 (A), 8889 (B)
 - **Gaze Data Transmission**: 8889 (A→B), 8888 (B→A)
-- ##IMPORTANT NOTE: the two ports are UDP, not TCP. This is incorporated into the code but just in case the firewall config needs this info. 
+- **!!!IMPORTANT NOTE: the two ports are UDP, not TCP. This is incorporated into the code but just in case the firewall config needs this info. 
 
-### Screen Size 
+## !!! Screen Size Check !!!
 - Click into Monitor Center in Psychopy software on each computer to make sure that the size of the screen is what EyeLink thinks it is (in calibration)
 - If on C19 and C21, and if nothing changed since June 2025, 
 Resolution: 2560 x 1440
