@@ -658,35 +658,47 @@ def run_competitive_round():
     }
     
     if a_response and b_response:
-        # Both players responded
+        # Both players responded - check who answered first
         if a_response['time'] < b_response['time']:
-            # A answered first
+            # A answered first - check if A's answer is correct
             if a_response['answer'] == target_category:
                 player_scores['A'] += 1
                 player_scores['B'] += 1
-                round_result['winner'] = 'A'
+                round_result['winner'] = 'Team (A first)'
                 round_result['points_awarded'] = 1
+            else:
+                round_result['winner'] = None
+                round_result['points_awarded'] = 0
         else:
-            # B answered first
+            # B answered first - check if B's answer is correct
             if b_response['answer'] == target_category:
                 player_scores['A'] += 1
                 player_scores['B'] += 1
-                round_result['winner'] = 'B'
+                round_result['winner'] = 'Team (B first)'
                 round_result['points_awarded'] = 1
+            else:
+                round_result['winner'] = None
+                round_result['points_awarded'] = 0
     elif a_response and not b_response:
-        # Only A responded
+        # Only A responded - check if A's answer is correct
         if a_response['answer'] == target_category:
             player_scores['A'] += 1
             player_scores['B'] += 1
-            round_result['winner'] = 'A'
+            round_result['winner'] = 'Team (A only)'
             round_result['points_awarded'] = 1
+        else:
+            round_result['winner'] = None
+            round_result['points_awarded'] = 0
     elif b_response and not a_response:
-        # Only B responded
+        # Only B responded - check if B's answer is correct
         if b_response['answer'] == target_category:
             player_scores['A'] += 1
             player_scores['B'] += 1
-            round_result['winner'] = 'B'
+            round_result['winner'] = 'Team (B only)'
             round_result['points_awarded'] = 1
+        else:
+            round_result['winner'] = None
+            round_result['points_awarded'] = 0
     
     trial_results.append(round_result)
     
@@ -716,10 +728,10 @@ def run_competitive_round():
         
         # Draw feedback
         if round_result['winner']:
-            feedback_msg = f"Player {round_result['winner']} wins! +1 point each"
+            feedback_msg = f"{round_result['winner']} - Correct! +1 point each"
             feedback_color = 'green'
         else:
-            feedback_msg = "No points this round"
+            feedback_msg = "Incorrect answer - No points this round"
             feedback_color = 'red'
         
         feedback_text = visual.TextStim(win, text=feedback_msg, pos=[0, -scn_height//2 + 60],
@@ -837,8 +849,8 @@ def terminate_task():
     sys.exit()
 
 # Show instructions
-task_msg = 'Computer A - Competitive Memory Game\n\n'
-task_msg += 'Two-Player Competitive Rules:\n'
+task_msg = 'Computer A - Collaborative Memory Game\n\n'
+task_msg += 'Two-Player Collaborative Rules:\n'
 task_msg += '• 8x8 physical grid = 4x4 logical grid (each logical cell = 2x2 identical images)\n'
 task_msg += '• 16 unique logical positions (4 each: Face, Limb, House, Car)\n'
 task_msg += '• Study grid for 5 seconds\n'
@@ -846,6 +858,7 @@ task_msg += '• Recall what was at marked position\n'
 task_msg += '• Press H=House, C=Car, F=Face, L=Limb\n'
 task_msg += '• You have 5 seconds to respond\n'
 task_msg += '• Both players get +1 point if first responder is correct\n'
+task_msg += '• Second player response is ignored\n'
 task_msg += '• No points if first responder is wrong\n'
 task_msg += '• 10 rounds total\n\n'
 task_msg += 'Network Configuration:\n'
@@ -921,7 +934,7 @@ try:
         print("✓ Recording active - starting competitive memory game")
         
         # Show game start message
-        show_msg(win, f"Competitive Memory Game Starting!\n\n{total_rounds} rounds ahead.\n\nBoth players must answer correctly for points!\n\nPress any key to start Round 1", True)
+        show_msg(win, f"Collaborative Memory Game Starting!\n\n{total_rounds} rounds ahead.\n\nWork together! First correct answer = +1 for both!\n\nPress any key to start Round 1", True)
         
         # Run all rounds
         for round_num in range(total_rounds):
@@ -935,22 +948,20 @@ try:
         
         # Show final results
         if trial_results:
-            results_msg = f'Competitive Memory Game Complete!\n\n'
-            results_msg += f'Final Scores:\n'
-            results_msg += f'• Player A: {player_scores["A"]} points\n'
-            results_msg += f'• Player B: {player_scores["B"]} points\n\n'
+            results_msg = f'Collaborative Memory Game Complete!\n\n'
+            results_msg += f'Team Score: {player_scores["A"]} points\n'
+            results_msg += f'(Both players have the same score)\n\n'
             
-            if player_scores['A'] == player_scores['B']:
-                results_msg += 'It\'s a tie! Great teamwork!\n\n'
-            else:
-                winner = 'A' if player_scores['A'] > player_scores['B'] else 'B'
-                results_msg += f'Winner: Player {winner}!\n\n'
+            success_rate = (player_scores['A'] / total_rounds) * 100
+            results_msg += f'Success Rate: {success_rate:.1f}%\n\n'
             
             # Show round-by-round results
             results_msg += 'Round Summary:\n'
             for r in trial_results:
-                winner_text = f"Winner: {r['winner']}" if r['winner'] else "No winner"
-                results_msg += f'• Round {r["round"]}: {r["target_category"]} - {winner_text}\n'
+                if r['winner']:
+                    results_msg += f'• Round {r["round"]}: {r["target_category"]} - {r["winner"]} ✓\n'
+                else:
+                    results_msg += f'• Round {r["round"]}: {r["target_category"]} - Incorrect ✗\n'
             
             results_msg += f'\nPress any key to exit...'
             
@@ -961,8 +972,8 @@ try:
         print("✓ Competitive memory game completed")
         
         # Show final statistics
-        completion_msg = f'Computer A - Game Complete!\n\n'
-        completion_msg += f'Final Score: A={player_scores["A"]} - B={player_scores["B"]}\n\n'
+        completion_msg = f'Computer A - Collaborative Game Complete!\n\n'
+        completion_msg += f'Team Score: {player_scores["A"]} points\n\n'
         completion_msg += f'Local Eye Tracking:\n'
         local_valid_rate = 100 * local_gaze_stats['valid_gaze_data'] / max(1, local_gaze_stats['total_attempts'])
         completion_msg += f'• Valid gaze data: {local_valid_rate:.1f}%\n'
