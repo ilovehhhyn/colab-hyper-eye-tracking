@@ -2,6 +2,9 @@ from psychopy import visual, core, event, gui
 import random
 import numpy as np
 import os
+import json
+import csv
+from datetime import datetime
 
 # Game settings
 GRID_SIZE = 8
@@ -9,9 +12,16 @@ TOTAL_ROUNDS = 20
 EASY_ROUNDS = 10
 MEDIUM_ROUNDS = 10
 DISPLAY_TIME = 5.0
-RESPONSE_TIME = 5.0
 
-# Image categories
+# Category mapping
+CATEGORY_MAP = {
+    0: 'face',
+    1: 'limb',
+    2: 'house',
+    3: 'car'
+}
+
+# Image categories for key mapping
 CATEGORIES = {
     'h': 'house',
     'c': 'car', 
@@ -29,20 +39,11 @@ class MemoryGame:
             units='pix'
         )
         
-        # Load images (you'll need to place these in the same directory)
-        self.images = {}
-        try:
-            self.images['house'] = visual.ImageStim(self.win, image='house.jpeg')
-            self.images['car'] = visual.ImageStim(self.win, image='car.jpeg')
-            self.images['face'] = visual.ImageStim(self.win, image='face.jpeg')
-            self.images['limb'] = visual.ImageStim(self.win, image='limb.jpeg')
-        except:
-            # If images not found, create colored rectangles as placeholders
-            print("Image files not found. Using colored rectangles as placeholders.")
-            self.images['house'] = visual.Rect(self.win, width=80, height=80, fillColor='blue')
-            self.images['car'] = visual.Rect(self.win, width=80, height=80, fillColor='red')
-            self.images['face'] = visual.Rect(self.win, width=80, height=80, fillColor='yellow')
-            self.images['limb'] = visual.Rect(self.win, width=80, height=80, fillColor='green')
+        # Load conditions from JSON
+        self.conditions = self._load_conditions()
+        
+        # Load all images from stimuli folder
+        self.images = self._load_all_images()
         
         # Create gray covers
         self.gray_cover = visual.Rect(self.win, width=80, height=80, fillColor='gray')
@@ -69,12 +70,76 @@ class MemoryGame:
         self.score = 0
         self.current_round = 0
         
+        # Data collection
+        self.trial_data = []
+        
         # Calculate grid positions
         self.grid_positions = self._calculate_grid_positions()
         
         # Create trial list (randomized order of difficulties)
         self.trials = (['easy'] * EASY_ROUNDS + ['medium'] * MEDIUM_ROUNDS)
         random.shuffle(self.trials)
+    
+    def _load_conditions(self):
+        """Load conditions from conditions.json"""
+        try:
+            with open('conditions.json', 'r') as f:
+                data = json.load(f)
+                return data['top_layouts_array_fixed_4']
+        except FileNotFoundError:
+            print("conditions.json not found. Using default conditions.")
+            # Default conditions if file not found
+            return [
+                [2, 0, 1, 3],
+                [3, 2, 0, 1],
+                [1, 3, 2, 0],
+                [0, 1, 3, 2],
+                [3, 1, 2, 0]
+            ]
+        except Exception as e:
+            print(f"Error loading conditions: {e}")
+            return [[2, 0, 1, 3]]  # Fallback
+    
+    def _load_all_images(self):
+        """Load all images from stimuli folder"""
+        images = {
+            'face': [],
+            'limb': [],
+            'house': [],
+            'car': []
+        }
+        
+        stimuli_path = 'stimuli'
+        
+        # Try to load images from each category
+        for category in ['faces', 'limbs', 'houses', 'cars']:
+            category_key = category[:-1]  # Remove 's' to get singular
+            if category == 'cars':
+                category_key = 'car'
+            
+            folder_path = os.path.join(stimuli_path, category)
+            
+            if os.path.exists(folder_path):
+                for i in range(1, 11):  # Load 10 images per category
+                    image_name = f"{category_key}-{i}.jpg"
+                    image_path = os.path.join(folder_path, image_name)
+                    
+                    if os.path.exists(image_path):
+                        try:
+                            img = visual.ImageStim(self.win, image=image_path)
+                            images[category_key].append(img)
+                        except Exception as e:
+                            print(f"Error loading {image_path}: {e}")
+            
+            # If no images loaded for this category, create colored rectangles
+            if not images[category_key]:
+                print(f"No images found for {category_key}. Using colored rectangles.")
+                colors = {'face': 'yellow', 'limb': 'green', 'house': 'blue', 'car': 'red'}
+                for i in range(10):
+                    rect = visual.Rect(self.win, width=80, height=80, fillColor=colors[category_key])
+                    images[category_key].append(rect)
+        
+        return images
     
     def _calculate_grid_positions(self):
         """Calculate pixel positions for 8x8 grid"""
@@ -91,65 +156,62 @@ class MemoryGame:
         
         return positions
     
-    def _create_easy_grid(self):
-        """Create easy difficulty grid - 4x4 blocks of same image (2x2 pattern)"""
-        grid_images = [''] * 64
+    def _create_grid_from_condition(self, condition, difficulty):
+        """Create grid from condition array"""
+        # condition is a 4-element array representing 2x2 pattern
+        # Convert numbers to categories
+        condition_categories = [CATEGORY_MAP[num] for num in condition]
         
-        # Create 2x2 pattern where each 4x4 block has same image
-        categories_list = list(CATEGORIES.values())
+        # Create grid based on difficulty
+        grid_images = []
+        grid_image_indices = []  # Track which specific image was used
         
-        # Assign categories to 2x2 grid
-        small_grid = []
-        for i in range(4):
-            small_grid.append(categories_list[i])
-        random.shuffle(small_grid)
+        if difficulty == 'easy':
+            # Each position in 2x2 becomes a 4x4 block
+            for small_row in range(2):
+                for small_col in range(2):
+                    category = condition_categories[small_row * 2 + small_col]
+                    # Randomly select one image from this category
+                    selected_image_idx = random.randint(0, len(self.images[category]) - 1)
+                    
+                    # Fill 4x4 block with this image
+                    for block_row in range(4):
+                        for block_col in range(4):
+                            grid_images.append(self.images[category][selected_image_idx])
+                            grid_image_indices.append((category, selected_image_idx))
         
-        # Expand 2x2 to 8x8 where each cell becomes a 4x4 block
-        for small_row in range(2):
-            for small_col in range(2):
-                category = small_grid[small_row * 2 + small_col]
-                
-                # Fill corresponding 4x4 block in 8x8 grid
-                for block_row in range(4):
-                    for block_col in range(4):
-                        big_row = small_row * 4 + block_row
-                        big_col = small_col * 4 + block_col
-                        grid_images[big_row * 8 + big_col] = category
+        else:  # medium
+            # Each position in 2x2 becomes a 2x2 block
+            # But we need to fill 8x8, so we need 4x4 pattern
+            # Repeat the 2x2 pattern to make 4x4
+            expanded_condition = []
+            for row in range(4):
+                for col in range(4):
+                    original_idx = (row // 2) * 2 + (col // 2)
+                    expanded_condition.append(condition[original_idx])
+            
+            # Convert to categories
+            expanded_categories = [CATEGORY_MAP[num] for num in expanded_condition]
+            
+            # Now each position becomes a 2x2 block
+            for small_row in range(4):
+                for small_col in range(4):
+                    category = expanded_categories[small_row * 4 + small_col]
+                    # Randomly select one image from this category
+                    selected_image_idx = random.randint(0, len(self.images[category]) - 1)
+                    
+                    # Fill 2x2 block with this image
+                    for block_row in range(2):
+                        for block_col in range(2):
+                            grid_images.append(self.images[category][selected_image_idx])
+                            grid_image_indices.append((category, selected_image_idx))
         
-        return grid_images
-    
-    def _create_medium_grid(self):
-        """Create medium difficulty grid - 2x2 blocks of same image"""
-        grid_images = [''] * 64
-        
-        # Create 4x4 pattern where each 2x2 block has same image
-        categories_list = list(CATEGORIES.values())
-        
-        # Assign categories to 4x4 grid
-        small_grid = []
-        for i in range(16):
-            small_grid.append(categories_list[i % 4])
-        random.shuffle(small_grid)
-        
-        # Expand 4x4 to 8x8 where each cell becomes a 2x2 block
-        for small_row in range(4):
-            for small_col in range(4):
-                category = small_grid[small_row * 4 + small_col]
-                
-                # Fill corresponding 2x2 block in 8x8 grid
-                for block_row in range(2):
-                    for block_col in range(2):
-                        big_row = small_row * 2 + block_row
-                        big_col = small_col * 2 + block_col
-                        grid_images[big_row * 8 + big_col] = category
-        
-        return grid_images
+        return grid_images, grid_image_indices
     
     def _display_grid(self, grid_images):
         """Display the image grid"""
-        for i, category in enumerate(grid_images):
+        for i, img in enumerate(grid_images):
             x, y = self.grid_positions[i]
-            img = self.images[category]
             img.pos = (x, y)
             img.size = (70, 70)  # Slightly smaller than cover
             img.draw()
@@ -167,31 +229,28 @@ class MemoryGame:
                 self.question_mark.draw()
     
     def _get_user_response(self):
-        """Get user response within time limit"""
+        """Get user response (no time limit)"""
         response_timer = core.Clock()
-        keys = []
         
-        while response_timer.getTime() < RESPONSE_TIME:
+        while True:
             keys = event.getKeys(keyList=['h', 'c', 'f', 'l', 'escape'])
             if keys:
                 if keys[0] == 'escape':
                     core.quit()
-                return keys[0]
+                return keys[0], response_timer.getTime()
             core.wait(0.01)
-        
-        return None  # No response within time limit
     
     def run_trial(self, difficulty):
         """Run a single trial"""
-        # Create grid based on difficulty
-        if difficulty == 'easy':
-            grid_images = self._create_easy_grid()
-        else:
-            grid_images = self._create_medium_grid()
+        # Select random condition
+        condition = random.choice(self.conditions)
+        
+        # Create grid from condition
+        grid_images, grid_image_indices = self._create_grid_from_condition(condition, difficulty)
         
         # Choose random target position
         target_index = random.randint(0, 63)
-        target_category = grid_images[target_index]
+        target_category, target_image_idx = grid_image_indices[target_index]
         
         # Find correct key for target category
         correct_key = None
@@ -221,20 +280,34 @@ class MemoryGame:
         instruction_text.draw()
         self.win.flip()
         
-        # Get response
-        user_response = self._get_user_response()
+        # Get response and measure time
+        user_response, response_time = self._get_user_response()
         
         # Check if correct
-        if user_response == correct_key:
+        correct = user_response == correct_key
+        if correct:
             self.score += 1
             feedback = "Correct! +1 point"
             feedback_color = 'green'
-        elif user_response is None:
-            feedback = "Time's up! No response"
-            feedback_color = 'red'
         else:
             feedback = f"Incorrect. Answer was {correct_key.upper()}"
             feedback_color = 'red'
+        
+        # Record trial data
+        trial_record = {
+            'trial': self.current_round,
+            'difficulty': difficulty,
+            'condition': condition,
+            'target_category': target_category,
+            'target_image_index': target_image_idx,
+            'target_position': target_index,
+            'correct_key': correct_key,
+            'user_response': user_response,
+            'response_time': response_time,
+            'correct': correct,
+            'timestamp': datetime.now().isoformat()
+        }
+        self.trial_data.append(trial_record)
         
         # Show feedback
         feedback_text = visual.TextStim(
@@ -249,7 +322,34 @@ class MemoryGame:
         self.win.flip()
         core.wait(1.5)
         
-        return user_response == correct_key
+        return correct
+    
+    def _save_data(self):
+        """Save trial data to CSV file"""
+        if not self.trial_data:
+            return
+        
+        # Create filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"memory_game_data_{timestamp}.csv"
+        
+        # Define CSV columns
+        fieldnames = [
+            'trial', 'difficulty', 'condition', 'target_category', 
+            'target_image_index', 'target_position', 'correct_key', 
+            'user_response', 'response_time', 'correct', 'timestamp'
+        ]
+        
+        try:
+            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(self.trial_data)
+            
+            print(f"Data saved to {filename}")
+            
+        except Exception as e:
+            print(f"Error saving data: {e}")
     
     def show_instructions(self):
         """Show game instructions"""
@@ -264,7 +364,7 @@ class MemoryGame:
         """Show final score"""
         score_text = visual.TextStim(
             self.win,
-            text=f"Game Complete!\n\nFinal Score: {self.score}/{TOTAL_ROUNDS}\nAccuracy: {(self.score/TOTAL_ROUNDS)*100:.1f}%\n\nPress SPACE to exit",
+            text=f"Game Complete!\n\nFinal Score: {self.score}/{TOTAL_ROUNDS}\nAccuracy: {(self.score/TOTAL_ROUNDS)*100:.1f}%\n\nData has been saved to CSV file.\n\nPress SPACE to exit",
             color='white',
             height=40,
             wrapWidth=600
@@ -306,11 +406,16 @@ class MemoryGame:
                 # Brief pause between trials
                 core.wait(0.5)
             
+            # Save data
+            self._save_data()
+            
             # Show final score
             self.show_final_score()
             
         except Exception as e:
             print(f"Error during game: {e}")
+            # Try to save data even if there's an error
+            self._save_data()
         finally:
             self.win.close()
             core.quit()
