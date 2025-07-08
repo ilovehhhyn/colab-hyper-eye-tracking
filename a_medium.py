@@ -685,6 +685,55 @@ def run_competitive_round():
         win.flip()
         core.wait(0.016)
         
+        # Check for escape
+        keys = event.getKeys()
+        if 'escape' in keys:
+            return None
+    
+    el_tracker.sendMessage(f"ROUND_{current_round}_STUDY_END")
+    
+    # Recall phase (no time limit - wait for responses)
+    game_state = 'recall'
+    target_pos = grid_positions[target_position]
+    question_mark.setPos([target_pos[0], target_pos[1] + 50])
+    
+    el_tracker.sendMessage(f"ROUND_{current_round}_RECALL_START")
+    
+    response = None
+    response_time = None
+    recall_start = core.getTime()
+    
+    # No time limit - wait for user response
+    while response is None:
+        update_local_gaze_display()
+        update_remote_gaze_display()
+        
+        win.clearBuffer()
+        
+        # Draw covered grid
+        for cover in grid_covers:
+            cover.draw()
+        
+        # Draw question mark
+        question_mark.draw()
+        
+        # Draw gaze markers
+        local_gaze_marker.draw()
+        if remote_gaze_data.get('valid', False):
+            remote_gaze_marker.draw()
+        
+        # Draw instructions
+        instruction_text = visual.TextStim(win, text='H=House  C=Car  F=Face  L=Limb', 
+                                         pos=[0, -scn_height//2 + 30], color='white', height=16)
+        instruction_text.draw()
+        
+        # Draw score
+        score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
+        score_text.draw()
+        
+        win.flip()
+        core.wait(0.016)
+        
         # Check for response
         keys = event.getKeys()
         if 'h' in keys:
@@ -1070,52 +1119,3 @@ except Exception as e:
 
 finally:
     terminate_task()
-        
-        win.flip()
-        core.wait(0.016)
-        
-        # Check for escape
-        keys = event.getKeys()
-        if 'escape' in keys:
-            return None
-    
-    el_tracker.sendMessage(f"ROUND_{current_round}_STUDY_END")
-    
-    # Recall phase (no time limit - wait for responses)
-    game_state = 'recall'
-    target_pos = grid_positions[target_position]
-    question_mark.setPos([target_pos[0], target_pos[1] + 50])
-    
-    el_tracker.sendMessage(f"ROUND_{current_round}_RECALL_START")
-    
-    response = None
-    response_time = None
-    recall_start = core.getTime()
-    
-    # No time limit - wait for user response
-    while response is None:
-        update_local_gaze_display()
-        update_remote_gaze_display()
-        
-        win.clearBuffer()
-        
-        # Draw covered grid
-        for cover in grid_covers:
-            cover.draw()
-        
-        # Draw question mark
-        question_mark.draw()
-        
-        # Draw gaze markers
-        local_gaze_marker.draw()
-        if remote_gaze_data.get('valid', False):
-            remote_gaze_marker.draw()
-        
-        # Draw instructions
-        instruction_text = visual.TextStim(win, text='H=House  C=Car  F=Face  L=Limb', 
-                                         pos=[0, -scn_height//2 + 30], color='white', height=16)
-        instruction_text.draw()
-        
-        # Draw score
-        score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
-        score_text.draw()
