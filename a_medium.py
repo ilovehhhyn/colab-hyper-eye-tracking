@@ -47,6 +47,23 @@ player_scores = {'A': 0, 'B': 0}
 game_send_socket = None
 game_receive_socket = None
 
+# Image and condition variables
+images = {
+    'face': [],
+    'limb': [],
+    'house': [],
+    'car': []
+}
+conditions = {}
+
+# Category mapping (consistent with second code)
+CATEGORY_MAP = {
+    0: 'face',
+    1: 'limb', 
+    2: 'house',
+    3: 'car'
+}
+
 # Switch to the script folder
 script_path = os.path.dirname(sys.argv[0])
 if len(script_path) != 0:
@@ -107,6 +124,71 @@ session_identifier = edf_fname + time_str
 session_folder = os.path.join(results_folder, session_identifier)
 if not os.path.exists(session_folder):
     os.makedirs(session_folder)
+
+# Load conditions from JSON file
+def load_conditions():
+    """Load conditions from dyad_conditions.json"""
+    global conditions
+    try:
+        with open('dyad_conditions.json', 'r') as f:
+            data = json.load(f)
+            conditions = {
+                'medium': data['top_layouts_array_fixed_16'],  # 16-element arrays (4x4 patterns)
+                'hard': data['top_layouts_array_fixed_64']     # 64-element arrays (8x8 patterns)
+            }
+        print("✓ Conditions loaded from dyad_conditions.json")
+    except FileNotFoundError:
+        print("dyad_conditions.json not found. Using default conditions.")
+        # Default conditions if file not found
+        conditions = {
+            'medium': [[2, 0, 1, 3, 2, 3, 0, 1, 3, 1, 2, 1, 0, 2, 0, 3]],  # 16-element default
+            'hard': [[1, 3, 2, 3, 0, 2, 1, 0] * 8]  # 64-element default (repeated pattern)
+        }
+    except Exception as e:
+        print(f"Error loading conditions: {e}")
+        conditions = {
+            'medium': [[2, 0, 1, 3, 2, 3, 0, 1, 3, 1, 2, 1, 0, 2, 0, 3]],
+            'hard': [[1, 3, 2, 3, 0, 2, 1, 0] * 8]
+        }
+
+def load_all_images():
+    """Load all images from stimuli folder"""
+    global images
+    
+    stimuli_path = 'stimuli'
+    
+    # Try to load images from each category
+    for category in ['faces', 'limbs', 'houses', 'cars']:
+        category_key = category[:-1]  # Remove 's' to get singular
+        if category == 'cars':
+            category_key = 'car'
+        
+        folder_path = os.path.join(stimuli_path, category)
+        
+        if os.path.exists(folder_path):
+            for i in range(1, 11):  # Load 10 images per category
+                image_name = f"{category_key}-{i}.jpg"
+                image_path = os.path.join(folder_path, image_name)
+                
+                if os.path.exists(image_path):
+                    try:
+                        # Don't create ImageStim here, just store the path
+                        images[category_key].append(image_path)
+                    except Exception as e:
+                        print(f"Error loading {image_path}: {e}")
+        
+        # If no images loaded for this category, create placeholder paths
+        if not images[category_key]:
+            print(f"No images found for {category_key}. Will use colored rectangles.")
+            # Add placeholder entries
+            for i in range(10):
+                images[category_key].append(f"placeholder_{category_key}_{i}")
+    
+    print("✓ Image paths loaded")
+
+# Load conditions and images at startup
+load_conditions()
+load_all_images()
 
 # Network Setup
 def setup_network():
@@ -334,13 +416,12 @@ local_gaze_marker = visual.Circle(win=win, radius=8, fillColor='blue', lineColor
 remote_gaze_marker = visual.Circle(win=win, radius=8, fillColor='red', lineColor='white', lineWidth=1)
 
 # Game grid elements
-def create_game_grid():
-    """Create the 8x8 game grid with 4x4 logical structure (each logical cell = 2x2 physical cells)"""
+def create_grid_from_condition(condition, difficulty):
+    """Create grid from condition array using actual images"""
     global grid_stimuli, grid_covers, grid_positions, question_mark, score_text, timer_text
     
-    # Grid setup - 8x8 physical grid representing 4x4 logical grid
+    # Grid setup - 8x8 physical grid
     physical_grid_size = 8
-    logical_grid_size = 4
     cell_size = 70
     grid_spacing = 80
     
@@ -352,58 +433,103 @@ def create_game_grid():
     grid_covers = []
     grid_positions.clear()
     
-    # Create image categories - 4 of each type for 16 logical positions
-    categories = ['face', 'limb', 'house', 'car']
-    all_items = []
-    for category in categories:
-        for i in range(4):
-            all_items.append(category)
+    # Convert condition to categories
+    if difficulty == 'medium':
+        # condition is a 16-element array representing 4x4 pattern
+        condition_categories = [CATEGORY_MAP[num] for num in condition]
+        
+        # Each position in 4x4 becomes a 2x2 block in 8x8
+        for med_row in range(4):
+            for med_col in range(4):
+                category = condition_categories[med_row * 4 + med_col]
+                # Randomly select one image from this category
+                selected_image_idx = random.randint(0, len(images[category]) - 1)
+                
+                # Fill 2x2 block with this image
+                for block_row in range(2):
+                    for block_col in range(2):
+                        row = med_row * 2 + block_row
+                        col = med_col * 2 + block_col
+                        x_pos = start_x + col * grid_spacing
+                        y_pos = start_y - row * grid_spacing
+                        
+                        grid_positions.append((x_pos, y_pos))
+                        
+                        # Create stimulus
+                        if images[category][selected_image_idx].startswith('placeholder_'):
+                            # Use colored rectangle
+                            category_colors = {
+                                'face': 'orange',
+                                'limb': 'green', 
+                                'house': 'purple',
+                                'car': 'yellow'
+                            }
+                            stimulus = visual.Rect(win=win, width=cell_size, height=cell_size,
+                                                 fillColor=category_colors[category], 
+                                                 lineColor='white', lineWidth=2,
+                                                 pos=[x_pos, y_pos])
+                            
+                            text_stim = visual.TextStim(win, text=category[0].upper(), pos=[x_pos, y_pos],
+                                                      color='black', height=24, bold=True)
+                            
+                            grid_stimuli.append({'rect': stimulus, 'text': text_stim, 'category': category, 'image_type': 'rect'})
+                        else:
+                            # Use actual image
+                            img_stim = visual.ImageStim(win, image=images[category][selected_image_idx],
+                                                      pos=[x_pos, y_pos], size=(cell_size, cell_size))
+                            
+                            grid_stimuli.append({'image': img_stim, 'category': category, 'image_type': 'image'})
+                        
+                        # Create cover
+                        cover = visual.Rect(win=win, width=cell_size, height=cell_size,
+                                          fillColor='gray', lineColor='white', lineWidth=2,
+                                          pos=[x_pos, y_pos])
+                        grid_covers.append(cover)
     
-    # Shuffle the items based on current round seed
-    random.seed(game_sync_data.get('grid_seed', 42))
-    random.shuffle(all_items)
-    
-    # Category colors for visualization
-    category_colors = {
-        'face': 'orange',
-        'limb': 'green', 
-        'house': 'purple',
-        'car': 'yellow'
-    }
-    
-    # Create 8x8 physical grid where each 2x2 block shows the same image
-    for row in range(physical_grid_size):
-        for col in range(physical_grid_size):
-            x_pos = start_x + col * grid_spacing
-            y_pos = start_y - row * grid_spacing
-            
-            grid_positions.append((x_pos, y_pos))
-            
-            # Determine which logical cell this physical cell belongs to
-            logical_row = row // 2
-            logical_col = col // 2
-            logical_idx = logical_row * logical_grid_size + logical_col
-            
-            # Get the category for this logical position
-            category = all_items[logical_idx]
-            
-            # Create stimulus (colored rectangle representing image)
-            stimulus = visual.Rect(win=win, width=cell_size, height=cell_size,
-                                 fillColor=category_colors[category], 
-                                 lineColor='white', lineWidth=2,
-                                 pos=[x_pos, y_pos])
-            
-            # Add category initial
-            text_stim = visual.TextStim(win, text=category[0].upper(), pos=[x_pos, y_pos],
-                                      color='black', height=24, bold=True)
-            
-            grid_stimuli.append({'rect': stimulus, 'text': text_stim, 'category': category, 'logical_idx': logical_idx})
-            
-            # Create cover (gray rectangle)
-            cover = visual.Rect(win=win, width=cell_size, height=cell_size,
-                              fillColor='gray', lineColor='white', lineWidth=2,
-                              pos=[x_pos, y_pos])
-            grid_covers.append(cover)
+    else:  # hard difficulty - use 64-element array directly for 8x8 grid
+        condition_categories = [CATEGORY_MAP[num] for num in condition]
+        
+        for row in range(physical_grid_size):
+            for col in range(physical_grid_size):
+                x_pos = start_x + col * grid_spacing
+                y_pos = start_y - row * grid_spacing
+                
+                grid_positions.append((x_pos, y_pos))
+                
+                idx = row * physical_grid_size + col
+                category = condition_categories[idx]
+                selected_image_idx = random.randint(0, len(images[category]) - 1)
+                
+                # Create stimulus
+                if images[category][selected_image_idx].startswith('placeholder_'):
+                    # Use colored rectangle
+                    category_colors = {
+                        'face': 'orange',
+                        'limb': 'green', 
+                        'house': 'purple',
+                        'car': 'yellow'
+                    }
+                    stimulus = visual.Rect(win=win, width=cell_size, height=cell_size,
+                                         fillColor=category_colors[category], 
+                                         lineColor='white', lineWidth=2,
+                                         pos=[x_pos, y_pos])
+                    
+                    text_stim = visual.TextStim(win, text=category[0].upper(), pos=[x_pos, y_pos],
+                                              color='black', height=24, bold=True)
+                    
+                    grid_stimuli.append({'rect': stimulus, 'text': text_stim, 'category': category, 'image_type': 'rect'})
+                else:
+                    # Use actual image
+                    img_stim = visual.ImageStim(win, image=images[category][selected_image_idx],
+                                              pos=[x_pos, y_pos], size=(cell_size, cell_size))
+                    
+                    grid_stimuli.append({'image': img_stim, 'category': category, 'image_type': 'image'})
+                
+                # Create cover
+                cover = visual.Rect(win=win, width=cell_size, height=cell_size,
+                                  fillColor='gray', lineColor='white', lineWidth=2,
+                                  pos=[x_pos, y_pos])
+                grid_covers.append(cover)
     
     # Question mark for recall phase
     question_mark = visual.TextStim(win, text='??', color='red', height=30, bold=True)
@@ -415,7 +541,7 @@ def create_game_grid():
     timer_text = visual.TextStim(win, text='', pos=[0, scn_height//2 - 60],
                                color='yellow', height=24, bold=True)
     
-    print("✓ Game grid created (8x8 physical, 4x4 logical)")
+    print(f"✓ Game grid created ({difficulty} difficulty)")
 
 # Gaze statistics
 local_gaze_stats = {
@@ -426,11 +552,8 @@ local_gaze_stats = {
     'last_valid_gaze': None
 }
 
-create_game_grid()
-print(f"✓ Visual elements created")
-
 def update_local_gaze_display():
-    """Update local gaze marker based on own eye tracking data"""
+    """Update local gaze marker based on own eye tracking data using corrected formula"""
     global local_gaze_stats
     
     local_gaze_stats['total_attempts'] += 1
@@ -463,9 +586,9 @@ def update_local_gaze_display():
             local_gaze_stats['last_valid_gaze'] = gaze_data
             
             try:
-                # Convert from EyeLink coordinates to PsychoPy coordinates
-                gaze_x = (scn_width/2 + 200 - gaze_data[0]) 
-                gaze_y = (gaze_data[1] - scn_height/2 - 800)
+                # Use the corrected formula provided
+                gaze_x = (1.2 * gaze_data[0] - scn_width/2 + 400 - 60)
+                gaze_y = (scn_height/2 - 1.2 * gaze_data[1] + 200 - 25)
                 
                 if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     local_gaze_marker.setPos([gaze_x, gaze_y])
@@ -484,8 +607,9 @@ def update_remote_gaze_display():
     if remote_gaze_data.get('valid', False):
         if time.time() - remote_gaze_data.get('timestamp', 0) < 0.1:
             try:
-                gaze_x = (scn_width/2 + 200 - remote_gaze_data['x']) 
-                gaze_y = (remote_gaze_data['y'] - scn_height/2 - 800)
+                # Use the same corrected formula for consistency
+                gaze_x = (1.2 * remote_gaze_data['x'] - scn_width/2 + 400 - 60)
+                gaze_y = (scn_height/2 - 1.2 * remote_gaze_data['y'] + 200 - 25)
                 
                 if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     remote_gaze_marker.setPos([gaze_x, gaze_y])
@@ -494,19 +618,21 @@ def update_remote_gaze_display():
                 pass
 
 def run_competitive_round():
-    """Run a single competitive round"""
+    """Run a single competitive round with predetermined conditions"""
     global game_state, current_round, game_sync_data, player_scores
     
     current_round += 1
     
     # Computer A generates the game parameters (as master)
-    grid_seed = random.randint(1, 1000000)
-    target_position = random.randint(0, 63)  # Still 64 physical positions
+    difficulty = 'medium' if current_round <= 5 else 'hard'  # First 5 rounds medium, rest hard
+    condition = random.choice(conditions[difficulty])
+    target_position = random.randint(0, 63)  # 64 physical positions
     
     game_sync_data = {
         'round': current_round,
         'target_pos': target_position,
-        'grid_seed': grid_seed,
+        'condition': condition,
+        'difficulty': difficulty,
         'responses': {}
     }
     
@@ -514,15 +640,15 @@ def run_competitive_round():
     send_game_data('round_start', {
         'round': current_round,
         'target_pos': target_position,
-        'grid_seed': grid_seed
+        'condition': condition,
+        'difficulty': difficulty
     })
     
-    # Recreate grid with new seed
-    create_game_grid()
+    # Create grid with condition
+    create_grid_from_condition(condition, difficulty)
     target_category = grid_stimuli[target_position]['category']
-    target_logical_idx = grid_stimuli[target_position]['logical_idx']
     
-    el_tracker.sendMessage(f"ROUND_{current_round}_START_TARGET_{target_position}_LOGICAL_{target_logical_idx}_CATEGORY_{target_category}")
+    el_tracker.sendMessage(f"ROUND_{current_round}_START_TARGET_{target_position}_CATEGORY_{target_category}_DIFFICULTY_{difficulty}")
     
     # Study phase (5 seconds)
     game_state = 'study'
@@ -536,8 +662,11 @@ def run_competitive_round():
         
         # Draw game grid
         for stim in grid_stimuli:
-            stim['rect'].draw()
-            stim['text'].draw()
+            if stim['image_type'] == 'rect':
+                stim['rect'].draw()
+                stim['text'].draw()
+            else:
+                stim['image'].draw()
         
         # Draw gaze markers (small and unobtrusive)
         local_gaze_marker.draw()
@@ -550,60 +679,7 @@ def run_competitive_round():
         timer_text.draw()
         
         # Draw score
-        score_text.setText(f"Round {current_round}/{total_rounds} | A: {player_scores['A']} - B: {player_scores['B']}")
-        score_text.draw()
-        
-        win.flip()
-        core.wait(0.016)
-        
-        # Check for escape
-        keys = event.getKeys()
-        if 'escape' in keys:
-            return None
-    
-    el_tracker.sendMessage(f"ROUND_{current_round}_STUDY_END")
-    
-    # Recall phase (5 seconds)
-    game_state = 'recall'
-    target_pos = grid_positions[target_position]
-    question_mark.setPos([target_pos[0], target_pos[1] + 50])
-    
-    el_tracker.sendMessage(f"ROUND_{current_round}_RECALL_START")
-    
-    response = None
-    response_time = None
-    recall_start = core.getTime()
-    
-    while core.getTime() - recall_start < 5.0 and response is None:
-        update_local_gaze_display()
-        update_remote_gaze_display()
-        
-        win.clearBuffer()
-        
-        # Draw covered grid
-        for cover in grid_covers:
-            cover.draw()
-        
-        # Draw question mark
-        question_mark.draw()
-        
-        # Draw gaze markers
-        local_gaze_marker.draw()
-        if remote_gaze_data.get('valid', False):
-            remote_gaze_marker.draw()
-        
-        # Draw timer
-        time_left = 5.0 - (core.getTime() - recall_start)
-        timer_text.setText(f"Recall Time: {time_left:.1f}s")
-        timer_text.draw()
-        
-        # Draw instructions
-        instruction_text = visual.TextStim(win, text='H=House  C=Car  F=Face  L=Limb', 
-                                         pos=[0, -scn_height//2 + 30], color='white', height=16)
-        instruction_text.draw()
-        
-        # Draw score
-        score_text.setText(f"Round {current_round}/{total_rounds} | A: {player_scores['A']} - B: {player_scores['B']}")
+        score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
         score_text.draw()
         
         win.flip()
@@ -638,12 +714,12 @@ def run_competitive_round():
     
     # Wait for both responses or timeout
     wait_start = time.time()
-    while time.time() - wait_start < 2.0:  # Wait up to 2 seconds for other player
+    while time.time() - wait_start < 3.0:  # Wait up to 3 seconds for other player
         if 'B' in game_sync_data['responses']:
             break
         time.sleep(0.01)
     
-    # Determine winner and scoring
+    # Determine winner and scoring - CORRECTED LOGIC
     a_response = game_sync_data['responses'].get('A')
     b_response = game_sync_data['responses'].get('B')
     
@@ -651,54 +727,46 @@ def run_competitive_round():
         'round': current_round,
         'target_position': target_position,
         'target_category': target_category,
+        'difficulty': difficulty,
+        'condition': condition,
         'a_response': a_response,
         'b_response': b_response,
         'winner': None,
         'points_awarded': 0
     }
     
+    # Collaborative scoring: first player to respond determines the outcome for BOTH players
+    first_player = None
+    first_response = None
+    
     if a_response and b_response:
         # Both players responded - check who answered first
         if a_response['time'] < b_response['time']:
-            # A answered first - check if A's answer is correct
-            if a_response['answer'] == target_category:
-                player_scores['A'] += 1
-                player_scores['B'] += 1
-                round_result['winner'] = 'Team (A first)'
-                round_result['points_awarded'] = 1
-            else:
-                round_result['winner'] = None
-                round_result['points_awarded'] = 0
+            first_player = 'A'
+            first_response = a_response['answer']
         else:
-            # B answered first - check if B's answer is correct
-            if b_response['answer'] == target_category:
-                player_scores['A'] += 1
-                player_scores['B'] += 1
-                round_result['winner'] = 'Team (B first)'
-                round_result['points_awarded'] = 1
-            else:
-                round_result['winner'] = None
-                round_result['points_awarded'] = 0
+            first_player = 'B'
+            first_response = b_response['answer']
     elif a_response and not b_response:
-        # Only A responded - check if A's answer is correct
-        if a_response['answer'] == target_category:
-            player_scores['A'] += 1
-            player_scores['B'] += 1
-            round_result['winner'] = 'Team (A only)'
-            round_result['points_awarded'] = 1
-        else:
-            round_result['winner'] = None
-            round_result['points_awarded'] = 0
+        # Only A responded
+        first_player = 'A'
+        first_response = a_response['answer']
     elif b_response and not a_response:
-        # Only B responded - check if B's answer is correct
-        if b_response['answer'] == target_category:
-            player_scores['A'] += 1
-            player_scores['B'] += 1
-            round_result['winner'] = 'Team (B only)'
-            round_result['points_awarded'] = 1
-        else:
-            round_result['winner'] = None
-            round_result['points_awarded'] = 0
+        # Only B responded
+        first_player = 'B'
+        first_response = b_response['answer']
+    
+    # Check if the first responder was correct
+    if first_response == target_category:
+        # First responder was correct - both players get +1 point
+        player_scores['A'] += 1
+        player_scores['B'] += 1
+        round_result['winner'] = f'Team (Player {first_player} first)'
+        round_result['points_awarded'] = 1
+    else:
+        # First responder was incorrect - both players get 0 points
+        round_result['winner'] = f'Team failed (Player {first_player} first, wrong answer)'
+        round_result['points_awarded'] = 0
     
     trial_results.append(round_result)
     
@@ -713,8 +781,11 @@ def run_competitive_round():
         win.clearBuffer()
         
         # Show correct answer
-        grid_stimuli[target_position]['rect'].draw()
-        grid_stimuli[target_position]['text'].draw()
+        if grid_stimuli[target_position]['image_type'] == 'rect':
+            grid_stimuli[target_position]['rect'].draw()
+            grid_stimuli[target_position]['text'].draw()
+        else:
+            grid_stimuli[target_position]['image'].draw()
         
         # Draw other covers
         for i, cover in enumerate(grid_covers):
@@ -727,11 +798,11 @@ def run_competitive_round():
             remote_gaze_marker.draw()
         
         # Draw feedback
-        if round_result['winner']:
-            feedback_msg = f"{round_result['winner']} - Correct! +1 point each"
+        if round_result['points_awarded'] > 0:
+            feedback_msg = f"{round_result['winner']} - Correct! +1 point for both players"
             feedback_color = 'green'
         else:
-            feedback_msg = "Incorrect answer - No points this round"
+            feedback_msg = f"{round_result['winner']} - No points this round"
             feedback_color = 'red'
         
         feedback_text = visual.TextStim(win, text=feedback_msg, pos=[0, -scn_height//2 + 60],
@@ -739,7 +810,7 @@ def run_competitive_round():
         feedback_text.draw()
         
         # Draw score
-        score_text.setText(f"Round {current_round}/{total_rounds} | A: {player_scores['A']} - B: {player_scores['B']}")
+        score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
         score_text.draw()
         
         win.flip()
@@ -792,17 +863,17 @@ def terminate_task():
     if trial_results:
         results_file = os.path.join(session_folder, f"{session_identifier}_competitive_results.txt")
         with open(results_file, 'w') as f:
-            f.write("Round\tPosition\tTarget\tA_Response\tA_Time\tB_Response\tB_Time\tWinner\tPoints\n")
+            f.write("Round\tDifficulty\tPosition\tTarget\tA_Response\tA_Time\tB_Response\tB_Time\tWinner\tPoints\n")
             for result in trial_results:
                 a_resp = result['a_response']['answer'] if result['a_response'] else 'None'
                 a_time = result['a_response']['time'] if result['a_response'] else 'None'
                 b_resp = result['b_response']['answer'] if result['b_response'] else 'None'
                 b_time = result['b_response']['time'] if result['b_response'] else 'None'
                 
-                f.write(f"{result['round']}\t{result['target_position']}\t{result['target_category']}\t"
+                f.write(f"{result['round']}\t{result['difficulty']}\t{result['target_position']}\t{result['target_category']}\t"
                        f"{a_resp}\t{a_time}\t{b_resp}\t{b_time}\t{result['winner']}\t{result['points_awarded']}\n")
         
-        print(f"✓ Game results saved: A={player_scores['A']}, B={player_scores['B']}")
+        print(f"✓ Game results saved: Team Score={player_scores['A']} (both players have same score)")
     
     # Close network sockets
     try:
@@ -851,16 +922,17 @@ def terminate_task():
 # Show instructions
 task_msg = 'Computer A - Collaborative Memory Game\n\n'
 task_msg += 'Two-Player Collaborative Rules:\n'
-task_msg += '• 8x8 physical grid = 4x4 logical grid (each logical cell = 2x2 identical images)\n'
-task_msg += '• 16 unique logical positions (4 each: Face, Limb, House, Car)\n'
 task_msg += '• Study grid for 5 seconds\n'
 task_msg += '• Recall what was at marked position\n'
 task_msg += '• Press H=House, C=Car, F=Face, L=Limb\n'
-task_msg += '• You have 5 seconds to respond\n'
-task_msg += '• Both players get +1 point if first responder is correct\n'
+task_msg += '• NO TIME LIMIT for responses\n'
+task_msg += '• First player to respond determines team outcome:\n'
+task_msg += '  - If first responder is CORRECT: +1 point for BOTH players\n'
+task_msg += '  - If first responder is WRONG: 0 points for BOTH players\n'
 task_msg += '• Second player response is ignored\n'
-task_msg += '• No points if first responder is wrong\n'
-task_msg += '• 10 rounds total\n\n'
+task_msg += '• Medium difficulty (first 5 rounds): 4x4 logical patterns\n'
+task_msg += '• Hard difficulty (last 5 rounds): 8x8 unique patterns\n'
+task_msg += f'• {total_rounds} rounds total\n\n'
 task_msg += 'Network Configuration:\n'
 task_msg += f'• Local IP: {LOCAL_IP}\n'
 task_msg += f'• Remote IP: {REMOTE_IP}\n\n'
@@ -942,14 +1014,14 @@ try:
             if result is None:  # User pressed escape
                 break
             
-            # Short break between rounds (except after last round)
+            # Wait for player to be ready for next round (except after last round)
             if round_num < total_rounds - 1:
-                show_msg(win, f"Round {round_num + 1} complete.\n\nScore: A={player_scores['A']} - B={player_scores['B']}\n\nPress any key to start Round {round_num + 2}", True)
+                show_msg(win, f"Round {round_num + 1} complete.\n\nTeam Score: {player_scores['A']} points\n\nPress any key when ready for Round {round_num + 2}", True)
         
         # Show final results
         if trial_results:
             results_msg = f'Collaborative Memory Game Complete!\n\n'
-            results_msg += f'Team Score: {player_scores["A"]} points\n'
+            results_msg += f'Final Team Score: {player_scores["A"]} points\n'
             results_msg += f'(Both players have the same score)\n\n'
             
             success_rate = (player_scores['A'] / total_rounds) * 100
@@ -958,10 +1030,8 @@ try:
             # Show round-by-round results
             results_msg += 'Round Summary:\n'
             for r in trial_results:
-                if r['winner']:
-                    results_msg += f'• Round {r["round"]}: {r["target_category"]} - {r["winner"]} ✓\n'
-                else:
-                    results_msg += f'• Round {r["round"]}: {r["target_category"]} - Incorrect ✗\n'
+                status = "✓" if r['points_awarded'] > 0 else "✗"
+                results_msg += f'• Round {r["round"]} ({r["difficulty"]}): {r["target_category"]} - {status}\n'
             
             results_msg += f'\nPress any key to exit...'
             
@@ -973,7 +1043,7 @@ try:
         
         # Show final statistics
         completion_msg = f'Computer A - Collaborative Game Complete!\n\n'
-        completion_msg += f'Team Score: {player_scores["A"]} points\n\n'
+        completion_msg += f'Final Team Score: {player_scores["A"]} points\n\n'
         completion_msg += f'Local Eye Tracking:\n'
         local_valid_rate = 100 * local_gaze_stats['valid_gaze_data'] / max(1, local_gaze_stats['total_attempts'])
         completion_msg += f'• Valid gaze data: {local_valid_rate:.1f}%\n'
@@ -1000,3 +1070,52 @@ except Exception as e:
 
 finally:
     terminate_task()
+        
+        win.flip()
+        core.wait(0.016)
+        
+        # Check for escape
+        keys = event.getKeys()
+        if 'escape' in keys:
+            return None
+    
+    el_tracker.sendMessage(f"ROUND_{current_round}_STUDY_END")
+    
+    # Recall phase (no time limit - wait for responses)
+    game_state = 'recall'
+    target_pos = grid_positions[target_position]
+    question_mark.setPos([target_pos[0], target_pos[1] + 50])
+    
+    el_tracker.sendMessage(f"ROUND_{current_round}_RECALL_START")
+    
+    response = None
+    response_time = None
+    recall_start = core.getTime()
+    
+    # No time limit - wait for user response
+    while response is None:
+        update_local_gaze_display()
+        update_remote_gaze_display()
+        
+        win.clearBuffer()
+        
+        # Draw covered grid
+        for cover in grid_covers:
+            cover.draw()
+        
+        # Draw question mark
+        question_mark.draw()
+        
+        # Draw gaze markers
+        local_gaze_marker.draw()
+        if remote_gaze_data.get('valid', False):
+            remote_gaze_marker.draw()
+        
+        # Draw instructions
+        instruction_text = visual.TextStim(win, text='H=House  C=Car  F=Face  L=Limb', 
+                                         pos=[0, -scn_height//2 + 30], color='white', height=16)
+        instruction_text.draw()
+        
+        # Draw score
+        score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
+        score_text.draw()
