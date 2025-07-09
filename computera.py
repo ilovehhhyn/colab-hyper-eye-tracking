@@ -439,8 +439,8 @@ def update_local_gaze_display():
             
             try:
                 # Convert from EyeLink coordinates to PsychoPy coordinates (CORRECTED FORMULA)
-                gaze_x = (scn_width/2 + 200 - gaze_data[0]) 
-                gaze_y = (gaze_data[1] - scn_height/2 - 800)
+                gaze_x = ( 1.2* gaze_data[0] - scn_width/2 + 400 - 60) 
+                gaze_y = (scn_height/2- 1.2 * gaze_data[1] + 200 -25 )
                 
                 if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     # Update local marker positions
