@@ -101,46 +101,46 @@ class MemoryGame:
             return [[2, 0, 1, 3]]  # Fallback
     
     def _load_all_images(self):
-    """Load all images from stimuli folder"""
-    images = {
-        'face': [],
-        'limb': [],
-        'house': [],
-        'car': []
-    }
-    
-    stimuli_path = 'stimuli'
-    
-    # Try to load images from each category
-    for category in ['faces', 'limbs', 'houses', 'cars']:
-        # Keep the plural form for file names
-        category_key = category[:-1]  # Remove 's' to get singular for dictionary key
-        if category == 'cars':
-            category_key = 'car'
+        """Load all images from stimuli folder"""
+        images = {
+            'face': [],
+            'limb': [],
+            'house': [],
+            'car': []
+        }
         
-        folder_path = os.path.join(stimuli_path, category)
+        stimuli_path = 'stimuli'
         
-        if os.path.exists(folder_path):
-            for i in range(10):  # Load 10 images per category (0-9)
-                image_name = f"{category}-{i}.png"  # Use plural category name and .png extension
-                image_path = os.path.join(folder_path, image_name)
-                
-                if os.path.exists(image_path):
-                    try:
-                        img = visual.ImageStim(self.win, image=image_path)
-                        images[category_key].append(img)
-                    except Exception as e:
-                        print(f"Error loading {image_path}: {e}")
+        # Try to load images from each category
+        for category in ['faces', 'limbs', 'houses', 'cars']:
+            # Keep the plural form for file names
+            category_key = category[:-1]  # Remove 's' to get singular for dictionary key
+            if category == 'cars':
+                category_key = 'car'
+            
+            folder_path = os.path.join(stimuli_path, category)
+            
+            if os.path.exists(folder_path):
+                for i in range(10):  # Load 10 images per category (0-9)
+                    image_name = f"{category}-{i}.png"  # Use plural category name and .png extension
+                    image_path = os.path.join(folder_path, image_name)
+                    
+                    if os.path.exists(image_path):
+                        try:
+                            img = visual.ImageStim(self.win, image=image_path)
+                            images[category_key].append(img)
+                        except Exception as e:
+                            print(f"Error loading {image_path}: {e}")
+            
+            # If no images loaded for this category, create colored rectangles
+            if not images[category_key]:
+                print(f"No images found for {category_key}. Using colored rectangles.")
+                colors = {'face': 'yellow', 'limb': 'green', 'house': 'blue', 'car': 'red'}
+                for i in range(10):
+                    rect = visual.Rect(self.win, width=80, height=80, fillColor=colors[category_key])
+                    images[category_key].append(rect)
         
-        # If no images loaded for this category, create colored rectangles
-        if not images[category_key]:
-            print(f"No images found for {category_key}. Using colored rectangles.")
-            colors = {'face': 'yellow', 'limb': 'green', 'house': 'blue', 'car': 'red'}
-            for i in range(10):
-                rect = visual.Rect(self.win, width=80, height=80, fillColor=colors[category_key])
-                images[category_key].append(rect)
-    
-    return images
+        return images
     
     def _calculate_grid_positions(self):
         """Calculate pixel positions for 8x8 grid"""
