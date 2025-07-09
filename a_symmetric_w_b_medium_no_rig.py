@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Computer B - Eye Gaze Data Sharing Program with Competitive Memory Game
-IP: 100.1.1.11
-Receives gaze data from Computer A (100.1.1.10) and sends own gaze data to A
+Computer A - Eye Gaze Data Sharing Program with Competitive Memory Game
+IP: 100.1.1.10
+Sends gaze data to Computer B (100.1.1.11) and receives gaze data from B
 SIMPLIFIED VERSION: Single calibration, medium difficulty only
 UPDATED: PNG support, correct plurals, single-player fallback
 """
@@ -23,11 +23,11 @@ from PIL import Image
 from string import ascii_letters, digits
 
 # Network Configuration
-LOCAL_IP = "100.1.1.11"  # Computer B's IP
-REMOTE_IP = "100.1.1.10"  # Computer A's IP
-GAZE_PORT = 8889
-SEND_PORT = 8888
-GAME_PORT = 8891  # New port for game synchronization
+LOCAL_IP = "100.1.1.10"  # Computer A's IP
+REMOTE_IP = "100.1.1.11"  # Computer B's IP
+GAZE_PORT = 8888
+SEND_PORT = 8889
+GAME_PORT = 8890  # Port for game synchronization
 
 # Global variables
 el_tracker = None
@@ -48,7 +48,7 @@ player_scores = {'A': 0, 'B': 0}
 # Single player mode variables
 single_player_mode = False
 network_connected = False
-connection_timeout = 5.0  # seconds to wait for Computer A
+connection_timeout = 5.0  # seconds to wait for Computer B
 
 # Game sockets
 game_send_socket = None
@@ -63,7 +63,7 @@ images = {
 }
 conditions = {}
 
-# Category mapping (consistent with Computer A)
+# Category mapping (consistent with Computer B)
 CATEGORY_MAP = {
     0: 'face',
     1: 'limb', 
@@ -86,7 +86,7 @@ dummy_mode = False
 full_screen = True
 
 print("=" * 60)
-print("COMPUTER B - SIMPLIFIED COMPETITIVE MEMORY GAME")
+print("COMPUTER A - SIMPLIFIED COMPETITIVE MEMORY GAME")
 print("=" * 60)
 print(f"Local IP: {LOCAL_IP}")
 print(f"Remote IP: {REMOTE_IP}")
@@ -94,10 +94,10 @@ print("SIMPLIFIED VERSION: Single calibration, medium difficulty only")
 print("UPDATED: PNG support, correct plurals, single-player fallback")
 
 # Set up EDF data file name
-edf_fname = 'COMP_B_SIMPLE'
+edf_fname = 'COMP_A_SIMPLE'
 
 # Prompt user to specify an EDF data filename
-dlg_title = 'Computer B Simple Game - Enter EDF File Name'
+dlg_title = 'Computer A Simple Game - Enter EDF File Name'
 dlg_prompt = 'Please enter a file name with 8 or fewer characters\n[letters, numbers, and underscore].'
 
 while True:
@@ -204,7 +204,7 @@ load_conditions()
 load_all_images()
 
 def test_network_connection():
-    """Test if Computer A is reachable"""
+    """Test if Computer B is reachable"""
     global network_connected
     
     try:
@@ -212,17 +212,17 @@ def test_network_connection():
         test_socket.settimeout(connection_timeout)
         
         # Try to send a test message
-        test_message = json.dumps({'type': 'connection_test', 'from': 'B'}).encode('utf-8')
+        test_message = json.dumps({'type': 'connection_test', 'from': 'A'}).encode('utf-8')
         test_socket.sendto(test_message, (REMOTE_IP, GAME_PORT + 1))
         
-        # Wait for response (this will timeout if A is not available)
+        # Wait for response (this will timeout if B is not available)
         try:
             response, addr = test_socket.recvfrom(1024)
             network_connected = True
-            print(f"✓ Computer A detected at {REMOTE_IP}")
+            print(f"✓ Computer B detected at {REMOTE_IP}")
         except socket.timeout:
             network_connected = False
-            print(f"⚠️  Computer A not detected at {REMOTE_IP} (timeout after {connection_timeout}s)")
+            print(f"⚠️  Computer B not detected at {REMOTE_IP} (timeout after {connection_timeout}s)")
         
         test_socket.close()
         
@@ -239,7 +239,7 @@ def setup_network():
     
     # Test network connection first
     if not test_network_connection():
-        print("⚠️  Computer A not detected - enabling single player mode")
+        print("⚠️  Computer B not detected - enabling single player mode")
         single_player_mode = True
         return True  # Continue in single player mode
     
@@ -258,7 +258,7 @@ def setup_network():
         # Game synchronization sockets
         game_send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         game_send_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        print(f"✓ Game send socket created for {REMOTE_IP}:{GAME_PORT}")
+        print(f"✓ Game send socket created for {REMOTE_IP}:{GAME_PORT + 1}")
         
         game_receive_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         game_receive_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -274,7 +274,7 @@ def setup_network():
         return True  # Continue in single player mode
 
 def send_gaze_data(gaze_x, gaze_y, valid=True):
-    """Send gaze data to Computer A (only if not in single player mode)"""
+    """Send gaze data to Computer B (only if not in single player mode)"""
     global network_stats
     
     if single_player_mode:
@@ -286,7 +286,7 @@ def send_gaze_data(gaze_x, gaze_y, valid=True):
             'y': float(gaze_y),
             'valid': valid,
             'timestamp': time.time(),
-            'computer': 'B'
+            'computer': 'A'
         }
         
         message = json.dumps(data).encode('utf-8')
@@ -297,7 +297,7 @@ def send_gaze_data(gaze_x, gaze_y, valid=True):
         network_stats['errors'] += 1
 
 def send_game_data(data_type, data):
-    """Send game synchronization data to Computer A (only if not in single player mode)"""
+    """Send game synchronization data to Computer B (only if not in single player mode)"""
     if single_player_mode:
         return
         
@@ -306,7 +306,7 @@ def send_game_data(data_type, data):
             'type': data_type,
             'data': data,
             'timestamp': time.time(),
-            'from': 'B'
+            'from': 'A'
         }
         
         encoded = json.dumps(message).encode('utf-8')
@@ -316,7 +316,7 @@ def send_game_data(data_type, data):
         print(f"Game send error: {e}")
 
 def receive_gaze_data():
-    """Continuously receive gaze data from Computer A (only if not in single player mode)"""
+    """Continuously receive gaze data from Computer B (only if not in single player mode)"""
     global remote_gaze_data, network_stats
     
     if single_player_mode:
@@ -327,7 +327,7 @@ def receive_gaze_data():
             data, addr = receive_socket.recvfrom(1024)
             gaze_info = json.loads(data.decode('utf-8'))
             
-            if gaze_info.get('computer') == 'A':
+            if gaze_info.get('computer') == 'B':
                 remote_gaze_data.update(gaze_info)
                 network_stats['received'] += 1
                 
@@ -349,13 +349,11 @@ def receive_game_data():
             data, addr = game_receive_socket.recvfrom(1024)
             message = json.loads(data.decode('utf-8'))
             
-            if message.get('from') == 'A':
-                if message['type'] == 'round_start':
-                    game_sync_data.update(message['data'])
-                elif message['type'] == 'response':
-                    game_sync_data['responses']['A'] = message['data']
+            if message.get('from') == 'B':
+                if message['type'] == 'response':
+                    game_sync_data['responses']['B'] = message['data']
                 elif message['type'] == 'ready':
-                    game_sync_data['a_ready'] = True
+                    game_sync_data['b_ready'] = True
                     
         except socket.timeout:
             continue
@@ -479,9 +477,9 @@ print("✓ Graphics environment ready")
 print("\n4. CREATING VISUAL ELEMENTS")
 print("-" * 30)
 
-# Gaze markers (smaller, less prominent) - Different colors for Computer B
-local_gaze_marker = visual.Circle(win=win, radius=8, fillColor='green', lineColor='white', lineWidth=1)
-remote_gaze_marker = visual.Circle(win=win, radius=8, fillColor='blue', lineColor='white', lineWidth=1)
+# Gaze markers (smaller, less prominent) - Different colors for Computer A
+local_gaze_marker = visual.Circle(win=win, radius=8, fillColor='red', lineColor='white', lineWidth=1)
+remote_gaze_marker = visual.Circle(win=win, radius=8, fillColor='cyan', lineColor='white', lineWidth=1)
 
 # Game grid elements - ONLY MEDIUM DIFFICULTY (4x4 logical patterns)
 def create_grid_from_condition(condition):
@@ -620,10 +618,11 @@ def update_local_gaze_display():
             
             try:
                 # Use the corrected formula provided
-                gaze_x = (1.2 * gaze_data[0] - scn_width/2 + 400 - 60)
-                gaze_y = (scn_height/2 - 1.2 * gaze_data[1] + 200 - 25)
+                gaze_x = (1.2* gaze_data[0] - scn_width/2 + 400-60)
+                gaze_y = (scn_height/2 - 1.2* gaze_data[1] + 200-25)
+
                 
-                if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
+                if True: # abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     local_gaze_marker.setPos([gaze_x, gaze_y])
                     send_gaze_data(gaze_data[0], gaze_data[1], True)
                     
@@ -632,6 +631,7 @@ def update_local_gaze_display():
         else:
             local_gaze_stats['missing_data'] += 1
             send_gaze_data(0, 0, False)
+
 def update_remote_gaze_display():
     """Update remote gaze marker based on received data from Computer B (only in two-player mode)"""
     global remote_gaze_data
@@ -643,264 +643,42 @@ def update_remote_gaze_display():
         if True: # time.time() - remote_gaze_data.get('timestamp', 0) < 0.1:
             try:
                 # Use the same corrected formula for consistency
-                gaze_x = -( remote_gaze_data['x'] - scn_width/2 + 50)
-                gaze_y = -(scn_height/2 -  remote_gaze_data['y'] + 200 )
+                gaze_x = - ( remote_gaze_data['x'] - scn_width/2 + 50)
+                gaze_y = - (scn_height/2 - remote_gaze_data['y'] + 200 )
                 
                 if True: # abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     remote_gaze_marker.setPos([gaze_x, gaze_y])
                     
             except Exception as e:
                 pass
-    else:
-              local_gaze_stats['missing_data'] += 1
-              send_gaze_data(0, 0, False)
 
-def validate_calibration():
-    """Validate calibration accuracy and ensure error margin is less than 1 degree for all points"""
-    if dummy_mode:
-        print("DUMMY MODE: Skipping calibration validation")
-        return True
-    
-    print("\n5. CALIBRATION VALIDATION")
-    print("-" * 30)
-    
-    max_attempts = 3
-    
-    for attempt in range(max_attempts):
-        print(f"Validation attempt {attempt + 1}/{max_attempts}")
-        
-        try:
-            # Run validation
-            el_tracker.doTrackerSetup()
-            
-            # Exit calibration mode and get validation results
-            el_tracker.exitCalibration()
-            pylink.msecDelay(100)
-            
-            # Get calibration/validation results
-            cal_result = None
-            try:
-                # Try to get calibration result
-                cal_result = el_tracker.getCalibrationResult()
-                print(f"Calibration result received: {cal_result}")
-            except Exception as e:
-                print(f"Could not retrieve calibration result: {e}")
-                # Continue anyway - we'll do a manual validation check
-            
-            # Additional validation check - test gaze accuracy at known points
-            validation_passed = True
-            max_error = 0.0
-            
-            # Test points (center and corners in screen coordinates)
-            test_points = [
-                (scn_width//2, scn_height//2),  # Center
-                (scn_width//4, scn_height//4),  # Upper left quadrant
-                (3*scn_width//4, scn_height//4),  # Upper right quadrant
-                (scn_width//4, 3*scn_height//4),  # Lower left quadrant
-                (3*scn_width//4, 3*scn_height//4)  # Lower right quadrant
-            ]
-            
-            print("Testing gaze accuracy at validation points...")
-            
-            # Start recording for validation
-            el_tracker.setOfflineMode()
-            pylink.msecDelay(100)
-            error = el_tracker.startRecording(1, 1, 1, 1)
-            
-            if error == 0:
-                pylink.msecDelay(300)
-                
-                for i, (target_x, target_y) in enumerate(test_points):
-                    # Show target
-                    target = visual.Circle(win, radius=20, fillColor='red', lineColor='white', 
-                                         pos=[target_x - scn_width//2, target_y - scn_height//2])
-                    
-                    win.clearBuffer()
-                    target.draw()
-                    
-                    # Instructions
-                    instruction = visual.TextStim(win, 
-                                                text=f"Look at the red circle\nValidation point {i+1}/{len(test_points)}", 
-                                                pos=[0, -scn_height//4], color='white', height=20)
-                    instruction.draw()
-                    win.flip()
-                    
-                    el_tracker.sendMessage(f"VALIDATION_POINT_{i+1}_TARGET_{target_x}_{target_y}")
-                    
-                    # Wait for stable fixation
-                    core.wait(1.0)
-                    
-                    # Collect gaze samples for 500ms
-                    gaze_samples = []
-                    start_time = core.getTime()
-                    
-                    while core.getTime() - start_time < 0.5:
-                        sample = el_tracker.getNewestSample()
-                        if sample is not None:
-                            gaze_data = None
-                            
-                            if sample.isRightSample():
-                                try:
-                                    gaze_data = sample.getRightEye().getGaze()
-                                except:
-                                    pass
-                            elif sample.isLeftSample():
-                                try:
-                                    gaze_data = sample.getLeftEye().getGaze()
-                                except:
-                                    pass
-                            
-                            if gaze_data and gaze_data[0] != pylink.MISSING_DATA and gaze_data[1] != pylink.MISSING_DATA:
-                                gaze_samples.append(gaze_data)
-                        
-                        core.wait(0.001)
-                    
-                    # Calculate average gaze position and error
-                    if len(gaze_samples) > 10:  # Need sufficient samples
-                        avg_gaze_x = np.mean([g[0] for g in gaze_samples])
-                        avg_gaze_y = np.mean([g[1] for g in gaze_samples])
-                        
-                        # Calculate error in degrees
-                        # Assuming 1 pixel = approximately 0.03 degrees at typical viewing distance
-                        pixel_error_x = abs(avg_gaze_x - target_x)
-                        pixel_error_y = abs(avg_gaze_y - target_y)
-                        
-                        # Convert to degrees (approximate)
-                        degrees_per_pixel = 0.03  # This may need adjustment based on your setup
-                        error_degrees = np.sqrt(pixel_error_x**2 + pixel_error_y**2) * degrees_per_pixel
-                        
-                        max_error = max(max_error, error_degrees)
-                        
-                        print(f"  Point {i+1}: Error = {error_degrees:.2f}° (pixels: x={pixel_error_x:.1f}, y={pixel_error_y:.1f})")
-                        
-                        if error_degrees > 1.0:  # Error threshold of 1 degree
-                            validation_passed = False
-                    else:
-                        print(f"  Point {i+1}: Insufficient gaze data collected")
-                        validation_passed = False
-                
-                el_tracker.stopRecording()
-                
-                # Clear screen
-                win.clearBuffer()
-                win.flip()
-                
-                # Show validation results
-                if validation_passed:
-                    print(f"✓ VALIDATION PASSED - Maximum error: {max_error:.2f}°")
-                    
-                    result_msg = f"Calibration Validation PASSED!\n\n"
-                    result_msg += f"Maximum error: {max_error:.2f}° (threshold: 1.0°)\n\n"
-                    result_msg += f"Eye tracking accuracy is sufficient for the competitive game.\n\n"
-                    result_msg += f"Press any key to continue..."
-                    
-                    show_msg(win, result_msg)
-                    return True
-                else:
-                    print(f"✗ VALIDATION FAILED - Maximum error: {max_error:.2f}°")
-                    
-                    if attempt < max_attempts - 1:
-                        retry_msg = f"Calibration Validation FAILED\n\n"
-                        retry_msg += f"Maximum error: {max_error:.2f}° (threshold: 1.0°)\n\n"
-                        retry_msg += f"The eye tracking accuracy is not sufficient.\n"
-                        retry_msg += f"This may affect game performance.\n\n"
-                        retry_msg += f"Attempt {attempt + 1}/{max_attempts}\n\n"
-                        retry_msg += f"Please:\n"
-                        retry_msg += f"• Adjust your head position\n"
-                        retry_msg += f"• Ensure good lighting\n"
-                        retry_msg += f"• Clean camera lens if needed\n"
-                        retry_msg += f"• Recalibrate more carefully\n\n"
-                        retry_msg += f"Press any key to retry calibration..."
-                        
-                        show_msg(win, retry_msg)
-                    else:
-                        # Final attempt failed
-                        final_msg = f"Calibration Validation FAILED\n\n"
-                        final_msg += f"Maximum error: {max_error:.2f}° (threshold: 1.0°)\n\n"
-                        final_msg += f"After {max_attempts} attempts, calibration accuracy\n"
-                        final_msg += f"is still below the required threshold.\n\n"
-                        final_msg += f"You can:\n"
-                        final_msg += f"• Continue anyway (C) - eye tracking may be inaccurate\n"
-                        final_msg += f"• Try calibration again (R)\n"
-                        final_msg += f"• Exit program (ESC)\n\n"
-                        final_msg += f"Press C, R, or ESC..."
-                        
-                        win.clearBuffer()
-                        msg = visual.TextStim(win, final_msg, color='white', wrapWidth=scn_width*0.8, 
-                                            height=24, bold=True)
-                        msg.draw()
-                        win.flip()
-                        
-                        while True:
-                            keys = event.getKeys()
-                            if 'c' in keys:
-                                print("User chose to continue with poor calibration")
-                                return True
-                            elif 'r' in keys:
-                                print("User chose to retry calibration")
-                                break
-                            elif 'escape' in keys:
-                                print("User chose to exit")
-                                return False
-                            core.wait(0.016)
-                        
-                        if 'escape' in keys:
-                            return False
-                        # If 'r' was pressed, continue to next attempt
-            
-            else:
-                print(f"Failed to start recording for validation (error: {error})")
-                if attempt < max_attempts - 1:
-                    show_msg(win, f"Recording error during validation.\nRetrying... (attempt {attempt + 2}/{max_attempts})")
-                else:
-                    show_msg(win, "Could not start recording for validation.\nContinuing anyway...")
-                    return True
-                    
-        except Exception as e:
-            print(f"Validation error: {e}")
-            if attempt < max_attempts - 1:
-                show_msg(win, f"Validation error: {e}\nRetrying... (attempt {attempt + 2}/{max_attempts})")
-            else:
-                show_msg(win, f"Validation failed with error: {e}\nContinuing anyway...")
-                return True
-    
-    # If we get here, all attempts failed but user chose to continue
-    return True
-
-def wait_for_round_start():
-    """Wait for Computer A to send round parameters (or generate them in single player mode)"""
+def generate_round_parameters():
+    """Generate round parameters and send to Computer B (or use locally in single player mode)"""
     global current_round, game_sync_data
     
-    if single_player_mode:
-        # Generate our own round parameters
-        current_round += 1
-        target_position = random.randint(0, 63)  # 0-63 for 8x8 grid
-        condition = random.choice(conditions['medium'])
-        
-        game_sync_data.update({
-            'round': current_round,
-            'target_pos': target_position,
-            'condition': condition
-        })
-        return True
-    else:
-        # Wait for round start data from Computer A
-        start_time = time.time()
-        while 'round' not in game_sync_data or game_sync_data['round'] <= current_round:
-            if time.time() - start_time > 10:  # Timeout after 10 seconds
-                return False
-            time.sleep(0.01)
-        
-        current_round = game_sync_data['round']
-        return True
+    current_round += 1
+    target_position = random.randint(0, 63)  # 0-63 for 8x8 grid
+    condition = random.choice(conditions['medium'])
+    
+    game_sync_data.update({
+        'round': current_round,
+        'target_pos': target_position,
+        'condition': condition
+    })
+    
+    if not single_player_mode:
+        # Send round parameters to Computer B
+        send_game_data('round_start', game_sync_data)
+    
+    return True
 
 def run_competitive_round():
     """Run a single competitive round (supports both single and two-player modes)"""
     global game_state, current_round, game_sync_data, player_scores
     
-    # Wait for round parameters (from Computer A or generate our own)
-    if not wait_for_round_start():
-        print("Timeout waiting for round start")
+    # Generate round parameters (Computer A is the leader)
+    if not generate_round_parameters():
+        print("Failed to generate round parameters")
         return None
     
     target_position = game_sync_data['target_pos']
@@ -944,7 +722,7 @@ def run_competitive_round():
         
         # Draw score
         if single_player_mode:
-            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['B']}")
+            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['A']}")
         else:
             score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
         score_text.draw()
@@ -998,7 +776,7 @@ def run_competitive_round():
         
         # Draw score
         if single_player_mode:
-            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['B']}")
+            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['A']}")
         else:
             score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
         score_text.draw()
@@ -1025,33 +803,33 @@ def run_competitive_round():
     
     # Record our response
     if response:
-        game_sync_data['responses']['B'] = {
+        game_sync_data['responses']['A'] = {
             'answer': response,
             'time': response_time,
             'timestamp': time.time()
         }
         if not single_player_mode:
-            send_game_data('response', game_sync_data['responses']['B'])
-        el_tracker.sendMessage(f"ROUND_{current_round}_RESPONSE_B_{response}_{response_time:.3f}")
+            send_game_data('response', game_sync_data['responses']['A'])
+        el_tracker.sendMessage(f"ROUND_{current_round}_RESPONSE_A_{response}_{response_time:.3f}")
     
     # Handle scoring based on mode
     if single_player_mode:
-        # Single player scoring - only player B's response matters
+        # Single player scoring - only player A's response matters
         round_result = {
             'round': current_round,
             'target_position': target_position,
             'target_category': target_category,
             'difficulty': 'medium',
             'condition': condition,
-            'b_response': game_sync_data['responses']['B'],
+            'a_response': game_sync_data['responses']['A'],
             'winner': None,
             'points_awarded': 0,
             'mode': 'single_player'
         }
         
         if response == target_category:
-            player_scores['B'] += 1
-            round_result['winner'] = 'Player B'
+            player_scores['A'] += 1
+            round_result['winner'] = 'Player A'
             round_result['points_awarded'] = 1
         else:
             round_result['winner'] = 'None (incorrect)'
@@ -1061,7 +839,7 @@ def run_competitive_round():
         # Two-player mode - wait for both responses or timeout
         wait_start = time.time()
         while time.time() - wait_start < 3.0:  # Wait up to 3 seconds for other player
-            if 'A' in game_sync_data['responses']:
+            if 'B' in game_sync_data['responses']:
                 break
             time.sleep(0.01)
         
@@ -1167,7 +945,7 @@ def run_competitive_round():
         
         # Draw score
         if single_player_mode:
-            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['B']}")
+            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['A']}")
         else:
             score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
         score_text.draw()
@@ -1223,14 +1001,14 @@ def terminate_task():
         results_file = os.path.join(session_folder, f"{session_identifier}_competitive_results.txt")
         with open(results_file, 'w') as f:
             if single_player_mode:
-                f.write("Round\tDifficulty\tPosition\tTarget\tB_Response\tB_Time\tCorrect\tPoints\tMode\n")
+                f.write("Round\tDifficulty\tPosition\tTarget\tA_Response\tA_Time\tCorrect\tPoints\tMode\n")
                 for result in trial_results:
-                    b_resp = result['b_response']['answer'] if result['b_response'] else 'None'
-                    b_time = result['b_response']['time'] if result['b_response'] else 'None'
+                    a_resp = result['a_response']['answer'] if result['a_response'] else 'None'
+                    a_time = result['a_response']['time'] if result['a_response'] else 'None'
                     correct = 'Yes' if result['points_awarded'] > 0 else 'No'
                     
                     f.write(f"{result['round']}\t{result['difficulty']}\t{result['target_position']}\t{result['target_category']}\t"
-                           f"{b_resp}\t{b_time}\t{correct}\t{result['points_awarded']}\t{result['mode']}\n")
+                           f"{a_resp}\t{a_time}\t{correct}\t{result['points_awarded']}\t{result['mode']}\n")
             else:
                 f.write("Round\tDifficulty\tPosition\tTarget\tA_Response\tA_Time\tB_Response\tB_Time\tWinner\tPoints\tMode\n")
                 for result in trial_results:
@@ -1243,7 +1021,7 @@ def terminate_task():
                            f"{a_resp}\t{a_time}\t{b_resp}\t{b_time}\t{result['winner']}\t{result['points_awarded']}\t{result['mode']}\n")
         
         if single_player_mode:
-            print(f"✓ Game results saved: Your Score={player_scores['B']}")
+            print(f"✓ Game results saved: Your Score={player_scores['A']}")
         else:
             print(f"✓ Game results saved: Team Score={player_scores['A']} (both players have same score)")
     
@@ -1295,8 +1073,8 @@ def terminate_task():
 
 # Show instructions
 if single_player_mode:
-    task_msg = 'Computer B - Simplified Single Player Memory Game\n\n'
-    task_msg += 'SINGLE PLAYER MODE (Computer A not detected)\n\n'
+    task_msg = 'Computer A - Simplified Single Player Memory Game\n\n'
+    task_msg += 'SINGLE PLAYER MODE (Computer B not detected)\n\n'
     task_msg += 'Single Player Rules:\n'
     task_msg += '• Study grid for 5 seconds\n'
     task_msg += '• Recall what was at marked position\n'
@@ -1307,7 +1085,7 @@ if single_player_mode:
     task_msg += '• MEDIUM DIFFICULTY ONLY: 4x4 logical patterns\n'
     task_msg += f'• {total_rounds} rounds total\n\n'
 else:
-    task_msg = 'Computer B - Simplified Collaborative Memory Game\n\n'
+    task_msg = 'Computer A - Simplified Collaborative Memory Game\n\n'
     task_msg += 'Two-Player Collaborative Rules:\n'
     task_msg += '• Study grid for 5 seconds\n'
     task_msg += '• Recall what was at marked position\n'
@@ -1326,20 +1104,18 @@ else:
 task_msg += 'Controls:\n'
 task_msg += '• SPACE = Recalibrate eye tracker\n'
 task_msg += '• ESCAPE = Exit program\n\n'
-task_msg += 'FEATURES:\n'
-task_msg += '• Simple calibration (one round)\n'
-task_msg += '• Medium difficulty only (10 rounds)\n'
+task_msg += 'SIMPLIFIED VERSION:\n'
+task_msg += '• Single calibration (no validation)\n'
+task_msg += '• Medium difficulty only\n'
 task_msg += '• PNG image support\n'
-task_msg += '• Correct plural folder names (limbs, not limb)\n'
-task_msg += '• Larger grid covering most of screen\n'
-task_msg += '• Red target square (no ?? text)\n\n'
+task_msg += '• Correct plural folder names (limbs, not limb)\n\n'
 if dummy_mode:
     task_msg += 'DUMMY MODE: Simulated eye tracking\n'
 task_msg += 'Press any key to begin calibration'
 
 show_msg(win, task_msg)
 
-# Simple Calibration
+# Simple Calibration (no validation enforcement)
 print("\n5. SIMPLE CALIBRATION")
 print("-" * 25)
 if not dummy_mode:
@@ -1367,9 +1143,9 @@ else:
 if single_player_mode:
     show_msg(win, "Calibration complete!\n\nSINGLE PLAYER MODE\n\nReady to start your memory game.\n\nPress any key to begin.")
 else:
-    show_msg(win, "Calibration complete!\n\nWaiting for Computer A to be ready...\n\nPress any key when both computers are ready.")
+    show_msg(win, "Calibration complete!\n\nWaiting for Computer B to be ready...\n\nPress any key when both computers are ready.")
     # Send ready signal
-    send_game_data('ready', {'computer': 'B'})
+    send_game_data('ready', {'computer': 'A'})
 
 # Main competitive game loop
 try:
@@ -1409,7 +1185,7 @@ try:
         if single_player_mode:
             start_msg = f"Simplified Single Player Memory Game Starting!\n\n{total_rounds} rounds ahead (medium difficulty only).\n\nGet as many correct as you can!\n\nPress any key to start"
         else:
-            start_msg = f"Simplified Collaborative Memory Game Starting!\n\n{total_rounds} rounds ahead (medium difficulty only).\n\nWork together! First correct answer = +1 for both!\n\nPress any key to start when Computer A is ready"
+            start_msg = f"Simplified Collaborative Memory Game Starting!\n\n{total_rounds} rounds ahead (medium difficulty only).\n\nWork together! First correct answer = +1 for both!\n\nPress any key to start"
         
         show_msg(win, start_msg, True)
         
@@ -1422,25 +1198,24 @@ try:
             # Wait for player to be ready for next round (except after last round)
             if round_num < total_rounds - 1:
                 if single_player_mode:
-                    show_msg(win, f"Round {round_num + 1} complete.\n\nYour Score: {player_scores['B']} points\n\nPress any key for Round {round_num + 2}...", True)
+                    show_msg(win, f"Round {round_num + 1} complete.\n\nYour Score: {player_scores['A']} points\n\nPress any key for Round {round_num + 2}...", True)
                 else:
-                    show_msg(win, f"Round {round_num + 1} complete.\n\nTeam Score: {player_scores['A']} points\n\nWaiting for Computer A to start Round {round_num + 2}...", False)
-                    time.sleep(2)  # Brief pause before next round
+                    show_msg(win, f"Round {round_num + 1} complete.\n\nTeam Score: {player_scores['A']} points\n\nPress any key for Round {round_num + 2}...", True)
         
         # Show final results
         if trial_results:
             if single_player_mode:
                 results_msg = f'Simplified Single Player Memory Game Complete!\n\n'
-                results_msg += f'Final Score: {player_scores["B"]} points\n\n'
+                results_msg += f'Final Score: {player_scores["A"]} points\n\n'
                 
-                success_rate = (player_scores['B'] / total_rounds) * 100
+                success_rate = (player_scores['A'] / total_rounds) * 100
                 results_msg += f'Success Rate: {success_rate:.1f}%\n\n'
                 
                 # Show round-by-round results
                 results_msg += 'Round Summary (Medium Difficulty):\n'
                 for r in trial_results:
                     status = "✓" if r['points_awarded'] > 0 else "✗"
-                    your_answer = r['b_response']['answer'] if r['b_response'] else 'No answer'
+                    your_answer = r['a_response']['answer'] if r['a_response'] else 'No answer'
                     results_msg += f'• Round {r["round"]}: {r["target_category"]} (You: {your_answer}) - {status}\n'
             else:
                 results_msg = f'Simplified Collaborative Memory Game Complete!\n\n'
@@ -1467,10 +1242,10 @@ try:
         
         # Show final statistics
         if single_player_mode:
-            completion_msg = f'Computer B - Simplified Single Player Game Complete!\n\n'
-            completion_msg += f'Final Score: {player_scores["B"]} points\n\n'
+            completion_msg = f'Computer A - Simplified Single Player Game Complete!\n\n'
+            completion_msg += f'Final Score: {player_scores["A"]} points\n\n'
         else:
-            completion_msg = f'Computer B - Simplified Collaborative Game Complete!\n\n'
+            completion_msg = f'Computer A - Simplified Collaborative Game Complete!\n\n'
             completion_msg += f'Final Team Score: {player_scores["A"]} points\n\n'
         
         completion_msg += f'Local Eye Tracking:\n'
@@ -1480,17 +1255,14 @@ try:
         
         if not single_player_mode:
             completion_msg += f'Network Communication:\n'
-            completion_msg += f'• Data sent to A: {network_stats["sent"]} packets\n'
-            completion_msg += f'• Data received from A: {network_stats["received"]} packets\n'
+            completion_msg += f'• Data sent to B: {network_stats["sent"]} packets\n'
+            completion_msg += f'• Data received from B: {network_stats["received"]} packets\n'
             completion_msg += f'• Network errors: {network_stats["errors"]}\n\n'
         
         completion_msg += f'Data saved to EDF file\n\n'
-        completion_msg += f'FEATURES:\n'
-        completion_msg += f'• Simple calibration (one round)\n'
-        completion_msg += f'• Medium difficulty only (10 rounds)\n'
+        completion_msg += f'SIMPLIFIED VERSION:\n'
+        completion_msg += f'• Single calibration, medium difficulty only\n'
         completion_msg += f'• PNG image support with correct folder names\n'
-        completion_msg += f'• Larger grid covering most of screen\n'
-        completion_msg += f'• Red target square instead of ?? text\n'
         if single_player_mode:
             completion_msg += f'• Single player fallback mode\n'
         completion_msg += f'\nPress any key to exit'
