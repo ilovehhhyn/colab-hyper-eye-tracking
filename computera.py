@@ -472,8 +472,8 @@ def update_remote_gaze_display():
         if time.time() - remote_gaze_data.get('timestamp', 0) < 0.1:
             try:
                 # Convert from EyeLink coordinates to PsychoPy coordinates (CORRECTED FORMULA)
-                gaze_x = (scn_width/2 + 200 - remote_gaze_data['x']) 
-                gaze_y = (remote_gaze_data['y'] - scn_height/2 - 800)
+                gaze_x = -( remote_gaze_data['x'] - scn_width/2 +  50)
+                gaze_y = - (scn_height/2 - remote_gaze_data['y'] + 200)
                 
                 if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     # Update remote marker positions
