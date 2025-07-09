@@ -623,7 +623,7 @@ def update_local_gaze_display():
                 gaze_x = - ( gaze_data[0] - scn_width/2 + 50)
                 gaze_y = - (scn_height/2 - gaze_data[1] + 200)
                 
-                if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
+                if True: # abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     local_gaze_marker.setPos([gaze_x, gaze_y])
                     send_gaze_data(gaze_data[0], gaze_data[1], True)
                     
@@ -641,13 +641,13 @@ def update_remote_gaze_display():
         return
     
     if remote_gaze_data.get('valid', False):
-        if time.time() - remote_gaze_data.get('timestamp', 0) < 0.1:
+        if True: # time.time() - remote_gaze_data.get('timestamp', 0) < 0.1:
             try:
                 # Use the same corrected formula for consistency
                 gaze_x = (1.2 * remote_gaze_data['x'] - scn_width/2 + 400 - 60)
                 gaze_y = (scn_height/2 - 1.2 * remote_gaze_data['y'] + 200 - 25)
                 
-                if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
+                if True: # abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     remote_gaze_marker.setPos([gaze_x, gaze_y])
                     
             except Exception as e:
