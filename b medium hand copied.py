@@ -653,7 +653,7 @@ def run_competitive_round():
     game_state = 'study'
     study_start = core.getTime()
     
-    while True: # core.getTime() - study_start < 5.0:
+    while core.getTime() - study_start < 5.0:
         update_local_gaze_display()
         
         update_remote_gaze_display()
