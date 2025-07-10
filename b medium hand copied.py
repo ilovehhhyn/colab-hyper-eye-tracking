@@ -25,7 +25,6 @@ LOCAL_IP = "100.1.1.11"  # Computer B's IP
 REMOTE_IP = "100.1.1.10"  # Computer A's IP
 GAZE_PORT = 8889
 SEND_PORT = 8888
-single_player_mode=False
 # Missing from your third code:
 game_sync_data = {'round': 0, 'target_pos': 0, 'grid_seed': 0, 'responses': {}}
 player_scores = {'A': 0, 'B': 0}
@@ -264,8 +263,6 @@ def receive_game_data():
     """Continuously receive game synchronization data (only if not in single player mode)"""
     global game_sync_data
     
-    if single_player_mode:
-        return
     
     while True:
         try:
@@ -622,28 +619,16 @@ def wait_for_round_start():
     """Wait for Computer A to send round parameters (or generate them in single player mode)"""
     global current_round, game_sync_data
     
-    if single_player_mode:
-        # Generate our own round parameters
-        current_round += 1
-        target_position = random.randint(0, 63)  # 0-63 for 8x8 grid
-        condition = random.choice(conditions['medium'])
-        
-        game_sync_data.update({
-            'round': current_round,
-            'target_pos': target_position,
-            'condition': condition
-        })
-        return True
-    else:
-        # Wait for round start data from Computer A
-        start_time = time.time()
-        while 'round' not in game_sync_data or game_sync_data['round'] <= current_round:
-            if time.time() - start_time > 10:  # Timeout after 10 seconds
-                return False
-            time.sleep(0.01)
-        
-        current_round = game_sync_data['round']
-        return True
+
+    # Wait for round start data from Computer A
+    start_time = time.time()
+    while 'round' not in game_sync_data or game_sync_data['round'] <= current_round:
+        if time.time() - start_time > 10:  # Timeout after 10 seconds
+            return False
+        time.sleep(0.01)
+    
+    current_round = game_sync_data['round']
+    return True
 
 def run_competitive_round():
     """Run a single competitive round (supports both single and two-player modes)"""
@@ -661,17 +646,17 @@ def run_competitive_round():
     create_grid_from_condition(condition)
     target_category = grid_stimuli[target_position]['category']
     
-    mode_str = "SINGLE" if single_player_mode else "MULTI"
+    mode_str =  "MULTI"
     el_tracker.sendMessage(f"ROUND_{current_round}_START_TARGET_{target_position}_CATEGORY_{target_category}_MEDIUM_{mode_str}")
     
     # Study phase (5 seconds)
     game_state = 'study'
     study_start = core.getTime()
     
-    while core.getTime() - study_start < 5.0:
+    while True: # core.getTime() - study_start < 5.0:
         update_local_gaze_display()
-        if not single_player_mode:
-            update_remote_gaze_display()
+        
+        update_remote_gaze_display()
         
         win.clearBuffer()
         
@@ -685,7 +670,7 @@ def run_competitive_round():
         
         # Draw gaze markers
         local_gaze_marker.draw()
-        if not single_player_mode and remote_gaze_data.get('valid', False):
+        if remote_gaze_data.get('valid', False):
             remote_gaze_marker.draw()
         
         # Draw timer
@@ -694,9 +679,7 @@ def run_competitive_round():
         timer_text.draw()
         
         # Draw score
-        if single_player_mode:
-            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['B']}")
-        else:
+        if True:
             score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
         score_text.draw()
         
@@ -724,8 +707,8 @@ def run_competitive_round():
     # No time limit - wait for user response
     while response is None:
         update_local_gaze_display()
-        if not single_player_mode:
-            update_remote_gaze_display()
+       
+        update_remote_gaze_display()
         
         win.clearBuffer()
         
@@ -739,7 +722,7 @@ def run_competitive_round():
         
         # Draw gaze markers
         local_gaze_marker.draw()
-        if not single_player_mode and remote_gaze_data.get('valid', False):
+        if remote_gaze_data.get('valid', False):
             remote_gaze_marker.draw()
         
         # Draw instructions
@@ -748,10 +731,8 @@ def run_competitive_round():
         instruction_text.draw()
         
         # Draw score
-        if single_player_mode:
-            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['B']}")
-        else:
-            score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
+        
+        score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
         score_text.draw()
         
         win.flip()
@@ -781,34 +762,12 @@ def run_competitive_round():
             'time': response_time,
             'timestamp': time.time()
         }
-        if not single_player_mode:
-            send_game_data('response', game_sync_data['responses']['B'])
+
+        send_game_data('response', game_sync_data['responses']['B'])
         el_tracker.sendMessage(f"ROUND_{current_round}_RESPONSE_B_{response}_{response_time:.3f}")
     
     # Handle scoring based on mode
-    if single_player_mode:
-        # Single player scoring - only player B's response matters
-        round_result = {
-            'round': current_round,
-            'target_position': target_position,
-            'target_category': target_category,
-            'difficulty': 'medium',
-            'condition': condition,
-            'b_response': game_sync_data['responses']['B'],
-            'winner': None,
-            'points_awarded': 0,
-            'mode': 'single_player'
-        }
-        
-        if response == target_category:
-            player_scores['B'] += 1
-            round_result['winner'] = 'Player B'
-            round_result['points_awarded'] = 1
-        else:
-            round_result['winner'] = 'None (incorrect)'
-            round_result['points_awarded'] = 0
-    
-    else:
+    if True: 
         # Two-player mode - wait for both responses or timeout
         wait_start = time.time()
         while time.time() - wait_start < 3.0:  # Wait up to 3 seconds for other player
@@ -874,8 +833,8 @@ def run_competitive_round():
     
     while core.getTime() - feedback_start < 3.0:
         update_local_gaze_display()
-        if not single_player_mode:
-            update_remote_gaze_display()
+        
+        update_remote_gaze_display()
         
         win.clearBuffer()
         
@@ -893,18 +852,11 @@ def run_competitive_round():
         
         # Draw gaze markers
         local_gaze_marker.draw()
-        if not single_player_mode and remote_gaze_data.get('valid', False):
+        if remote_gaze_data.get('valid', False):
             remote_gaze_marker.draw()
         
         # Draw feedback
-        if single_player_mode:
-            if round_result['points_awarded'] > 0:
-                feedback_msg = f"Correct! +1 point"
-                feedback_color = 'green'
-            else:
-                feedback_msg = f"Wrong answer. Correct: {target_category}"
-                feedback_color = 'red'
-        else:
+        if True: 
             if round_result['points_awarded'] > 0:
                 feedback_msg = f"{round_result['winner']} - Correct! +1 point for both players"
                 feedback_color = 'green'
@@ -917,10 +869,8 @@ def run_competitive_round():
         feedback_text.draw()
         
         # Draw score
-        if single_player_mode:
-            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['B']}")
-        else:
-            score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
+      
+        score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
         score_text.draw()
         
         win.flip()
