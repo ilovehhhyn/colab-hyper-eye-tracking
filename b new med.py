@@ -25,6 +25,16 @@ LOCAL_IP = "100.1.1.11"  # Computer B's IP
 REMOTE_IP = "100.1.1.10"  # Computer A's IP
 GAZE_PORT = 8889
 SEND_PORT = 8888
+single_player_mode=False
+# Missing from your third code:
+game_sync_data = {'round': 0, 'target_pos': 0, 'grid_seed': 0, 'responses': {}}
+player_scores = {'A': 0, 'B': 0}
+images = {'face': [], 'limb': [], 'house': [], 'car': []}
+conditions = {}
+CATEGORY_MAP = {0: 'face', 1: 'limb', 2: 'house', 3: 'car'}
+# Game sockets
+game_send_socket = None
+game_receive_socket = None
 
 # Global variables
 el_tracker = None
@@ -101,10 +111,110 @@ session_folder = os.path.join(results_folder, session_identifier)
 if not os.path.exists(session_folder):
     os.makedirs(session_folder)
 
+
+# Load conditions from JSON file
+def load_conditions():
+    """Load conditions from dyad_conditions.json"""
+    global conditions
+    try:
+        with open('dyad_conditions.json', 'r') as f:
+            data = json.load(f)
+            conditions = {
+                'medium': data['top_layouts_array_fixed_16']  # Only medium (16-element arrays for 4x4 patterns)
+            }
+        print("✓ Conditions loaded from dyad_conditions.json (medium difficulty only)")
+    except FileNotFoundError:
+        print("dyad_conditions.json not found. Using default medium conditions.")
+        # Default conditions if file not found
+        conditions = {
+            'medium': [[2, 0, 1, 3, 2, 3, 0, 1, 3, 1, 2, 1, 0, 2, 0, 3]]  # 16-element default
+        }
+    except Exception as e:
+        print(f"Error loading conditions: {e}")
+        conditions = {
+            'medium': [[2, 0, 1, 3, 2, 3, 0, 1, 3, 1, 2, 1, 0, 2, 0, 3]]
+        }
+
+def load_all_images():
+    """Load all images from stimuli folder - FIXED: PNG support and correct plurals"""
+    global images
+    
+    stimuli_path = 'stimuli'
+    
+    # Fixed category mapping with correct plurals
+    category_folders = {
+        'face': 'faces',
+        'limb': 'limbs',  # Fixed: was 'limbs' 
+        'house': 'houses',
+        'car': 'cars'
+    }
+    
+    # Try to load images from each category
+    for category_key, folder_name in category_folders.items():
+        folder_path = os.path.join(stimuli_path, folder_name)
+        
+        if os.path.exists(folder_path):
+            for i in range(10):  # Load 10 images per category (0-9)
+                # Fixed: Use correct plural form and 0-based indexing
+                image_name = f"{folder_name}-{i}.png"  # Fixed: PNG extension and plural form
+                image_path = os.path.join(folder_path, image_name)
+                
+                if os.path.exists(image_path):
+                    try:
+                        # Don't create ImageStim here, just store the path
+                        images[category_key].append(image_path)
+                        if i == 0:  # Only print for first image of each category
+                            print(f"✓ Found {folder_name} images")
+                    except Exception as e:
+                        print(f"Error loading {image_path}: {e}")
+        
+        # If no images loaded for this category, create placeholder paths
+        if not images[category_key]:
+            print(f"No images found for {category_key} in {folder_path}. Will use colored rectangles.")
+            # Add placeholder entries
+            for i in range(10):
+                images[category_key].append(f"placeholder_{category_key}_{i}")
+    
+    print("✓ Image paths loaded (PNG format, correct plurals)")
+
+# Load conditions and images at startup
+load_conditions()
+load_all_images()
+
+def test_network_connection():
+    """Test if Computer A is reachable"""
+    global network_connected
+    
+    try:
+        test_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        test_socket.settimeout(connection_timeout)
+        
+        # Try to send a test message
+        test_message = json.dumps({'type': 'connection_test', 'from': 'B'}).encode('utf-8')
+        test_socket.sendto(test_message, (REMOTE_IP, GAME_PORT + 1))
+        
+        # Wait for response (this will timeout if A is not available)
+        try:
+            response, addr = test_socket.recvfrom(1024)
+            network_connected = True
+            print(f"✓ Computer A detected at {REMOTE_IP}")
+        except socket.timeout:
+            network_connected = False
+            print(f"⚠️  Computer A not detected at {REMOTE_IP} (timeout after {connection_timeout}s)")
+        
+        test_socket.close()
+        
+    except Exception as e:
+        network_connected = False
+        print(f"⚠️  Network test failed: {e}")
+    
+    return network_connected
+
+
 # Network Setup
 def setup_network():
     """Setup UDP sockets for sending and receiving gaze data"""
-    global send_socket, receive_socket
+    global send_socket, receive_socket, game_send_socket, game_receive_socket
     
     try:
         # Socket for sending data to Computer A
@@ -118,11 +228,62 @@ def setup_network():
         receive_socket.bind((LOCAL_IP, GAZE_PORT))
         receive_socket.settimeout(0.001)  # Non-blocking with short timeout
         print(f"✓ Receive socket bound to {LOCAL_IP}:{GAZE_PORT}")
+         # Game synchronization sockets
+        game_send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        game_send_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        print(f"✓ Game send socket created for {REMOTE_IP}:{GAME_PORT}")
+        
+        game_receive_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        game_receive_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        game_receive_socket.bind((LOCAL_IP, GAME_PORT))
+        game_receive_socket.settimeout(0.001)
+        print(f"✓ Game receive socket bound to {LOCAL_IP}:{GAME_PORT}")
         
         return True
     except Exception as e:
         print(f"✗ Network setup failed: {e}")
         return False
+        
+def send_game_data(data_type, data):
+    """Send game synchronization data to Computer A (only if not in single player mode)"""
+        
+    try:
+        message = {
+            'type': data_type,
+            'data': data,
+            'timestamp': time.time(),
+            'from': 'B'
+        }
+        
+        encoded = json.dumps(message).encode('utf-8')
+        game_send_socket.sendto(encoded, (REMOTE_IP, GAME_PORT + 1))
+        
+    except Exception as e:
+        print(f"Game send error: {e}")
+def receive_game_data():
+    """Continuously receive game synchronization data (only if not in single player mode)"""
+    global game_sync_data
+    
+    if single_player_mode:
+        return
+    
+    while True:
+        try:
+            data, addr = game_receive_socket.recvfrom(1024)
+            message = json.loads(data.decode('utf-8'))
+            
+            if message.get('from') == 'A':
+                if message['type'] == 'round_start':
+                    game_sync_data.update(message['data'])
+                elif message['type'] == 'response':
+                    game_sync_data['responses']['A'] = message['data']
+                elif message['type'] == 'ready':
+                    game_sync_data['a_ready'] = True
+                    
+        except socket.timeout:
+            continue
+        except Exception as e:
+            time.sleep(0.001)
 
 def send_gaze_data(gaze_x, gaze_y, valid=True):
     """Send gaze data to Computer A"""
@@ -290,107 +451,97 @@ status_background = visual.Rect(win=win, width=scn_width*0.9, height=60,
                                pos=[0, scn_height//2 - 40])
 status_text = visual.TextStim(win, text='', pos=[0, scn_height//2 - 40], color='lightgreen', 
                              height=12, bold=True)
-
-# Game elements
-def create_game_elements():
-    """Create visual elements for the memory game"""
-    global grid_stimuli, grid_covers, question_mark, game_instructions, feedback_text
+def create_grid_from_condition(condition):
+    """Create grid from condition array using actual images - MEDIUM DIFFICULTY ONLY"""
+    global grid_stimuli, grid_covers, grid_positions, target_cover, score_text, timer_text
     
-    # Grid setup - 6x6 grid in the center area
-    grid_size = 6
-    cell_size = 60
-    grid_spacing = 70
+    # Grid setup - 8x8 physical grid representing 4x4 logical pattern
+    physical_grid_size = 8
+    cell_size = 70
     
-    # Calculate grid position (center of screen, below status bar)
-    start_x = -(grid_size - 1) * grid_spacing / 2
-    start_y = 100  # Below status bar
+    # Calculate grid spacing to cover most of the screen
+    # Use 85% of screen width and height, divided by grid size
+    available_width = scn_width * 0.85
+    available_height = scn_height * 0.85
+    
+    grid_spacing_x = available_width / physical_grid_size
+    grid_spacing_y = available_height / physical_grid_size
+    
+    # Use the smaller spacing to maintain square grid
+    grid_spacing = min(grid_spacing_x, grid_spacing_y)
+    
+    # Calculate grid position (center of screen)
+    start_x = -(physical_grid_size - 1) * grid_spacing / 2
+    start_y = (physical_grid_size - 1) * grid_spacing / 2
     
     grid_stimuli = []
     grid_covers = []
     grid_positions.clear()
     
-    # Create image categories
-    categories = ['F', 'L', 'H', 'C']  # Face, Limbs, House, Car
-    category_colors = {
-        'F': 'orange',      # Face
-        'L': 'green',       # Limbs  
-        'H': 'purple',      # House
-        'C': 'yellow'       # Car
-    }
+    # Medium difficulty: condition is a 16-element array representing 4x4 pattern
+    condition_categories = [CATEGORY_MAP[num] for num in condition]
     
-    # Generate 36 items (9 of each category)
-    items = []
-    for category in categories:
-        for i in range(9):
-            items.append(category)
-    
-    # Shuffle the items
-    random.shuffle(items)
-    
-    # Create grid
-    for row in range(grid_size):
-        for col in range(grid_size):
-            x_pos = start_x + col * grid_spacing
-            y_pos = start_y - row * grid_spacing
+    # Each position in 4x4 becomes a 2x2 block in 8x8
+    for med_row in range(4):
+        for med_col in range(4):
+            category = condition_categories[med_row * 4 + med_col]
+            # Randomly select one image from this category
+            selected_image_idx = random.randint(0, len(images[category]) - 1)
             
-            grid_positions.append((x_pos, y_pos))
-            
-            # Create stimulus (colored rectangle with letter)
-            item_idx = row * grid_size + col
-            category = items[item_idx]
-            
-            stimulus = visual.Rect(win=win, width=cell_size, height=cell_size,
-                                 fillColor=category_colors[category], 
-                                 lineColor='white', lineWidth=2,
-                                 pos=[x_pos, y_pos])
-            
-            # Add category letter
-            text_stim = visual.TextStim(win, text=category, pos=[x_pos, y_pos],
-                                      color='black', height=30, bold=True)
-            
-            grid_stimuli.append({'rect': stimulus, 'text': text_stim, 'category': category})
-            
-            # Create cover (gray rectangle)
-            cover = visual.Rect(win=win, width=cell_size, height=cell_size,
-                              fillColor='gray', lineColor='white', lineWidth=2,
-                              pos=[x_pos, y_pos])
-            grid_covers.append(cover)
+            # Fill 2x2 block with this image
+            for block_row in range(2):
+                for block_col in range(2):
+                    row = med_row * 2 + block_row
+                    col = med_col * 2 + block_col
+                    x_pos = start_x + col * grid_spacing
+                    y_pos = start_y - row * grid_spacing
+                    
+                    grid_positions.append((x_pos, y_pos))
+                    
+                    # Create stimulus
+                    if images[category][selected_image_idx].startswith('placeholder_'):
+                        # Use colored rectangle
+                        category_colors = {
+                            'face': 'orange',
+                            'limb': 'green', 
+                            'house': 'purple',
+                            'car': 'yellow'
+                        }
+                        stimulus = visual.Rect(win=win, width=cell_size, height=cell_size,
+                                             fillColor=category_colors[category], 
+                                             lineColor='white', lineWidth=2,
+                                             pos=[x_pos, y_pos])
+                        
+                        text_stim = visual.TextStim(win, text=category[0].upper(), pos=[x_pos, y_pos],
+                                                  color='black', height=24, bold=True)
+                        
+                        grid_stimuli.append({'rect': stimulus, 'text': text_stim, 'category': category, 'image_type': 'rect'})
+                    else:
+                        # Use actual image
+                        img_stim = visual.ImageStim(win, image=images[category][selected_image_idx],
+                                                  pos=[x_pos, y_pos], size=(cell_size, cell_size))
+                        
+                        grid_stimuli.append({'image': img_stim, 'category': category, 'image_type': 'image'})
+                    
+                    # Create cover
+                    cover = visual.Rect(win=win, width=cell_size, height=cell_size,
+                                      fillColor='gray', lineColor='white', lineWidth=2,
+                                      pos=[x_pos, y_pos])
+                    grid_covers.append(cover)
     
-    # Question mark for recall phase
-    question_mark = visual.TextStim(win, text='?', color='red', height=40, bold=True)
+    # Create special target cover (bright red for recall phase)
+    target_cover = visual.Rect(win=win, width=cell_size, height=cell_size,
+                              fillColor='red', lineColor='white', lineWidth=3,
+                              pos=[0, 0])  # Position will be set during recall phase
     
-    # Instructions and feedback
-    game_instructions = visual.TextStim(win, text='', pos=[0, -scn_height//2 + 60],
-                                      color='white', height=16, wrapWidth=scn_width*0.8)
+    # Score and timer displays
+    score_text = visual.TextStim(win, text='', pos=[0, scn_height//2 - 30],
+                               color='white', height=20, bold=True)
     
-    feedback_text = visual.TextStim(win, text='', pos=[0, -scn_height//2 + 20],
-                                  color='white', height=20, bold=True)
+    timer_text = visual.TextStim(win, text='', pos=[0, scn_height//2 - 60],
+                               color='yellow', height=24, bold=True)
     
-    print("✓ Game elements created")
-
-# Corner decorations (smaller)
-corner_size = 20
-corners = []
-corner_positions = [
-    (-scn_width//2 + corner_size, scn_height//2 - corner_size),
-    (scn_width//2 - corner_size, scn_height//2 - corner_size),
-    (-scn_width//2 + corner_size, -scn_height//2 + corner_size),
-    (scn_width//2 - corner_size, -scn_height//2 + corner_size)
-]
-
-colors = ['lightgreen', 'lightblue', 'lightcoral', 'lightyellow']
-for i, pos in enumerate(corner_positions):
-    corner = visual.Circle(win=win, radius=15, fillColor=colors[i], lineColor='white', lineWidth=2, pos=pos)
-    corners.append(corner)
-
-# Legend (smaller)
-legend_bg = visual.Rect(win=win, width=250, height=80, 
-                       fillColor='darkslategray', lineColor='white', lineWidth=2,
-                       pos=[scn_width//2 - 150, -scn_height//2 + 120])
-
-legend_text = visual.TextStim(win, text='Green=B(You) Blue=A(Remote)\nF=Face L=Limbs H=House C=Car', 
-                             pos=[scn_width//2 - 150, -scn_height//2 + 120], 
-                             color='white', height=12, bold=True)
+    print("✓ Game grid created (medium difficulty - 4x4 logical pattern)")
 
 # Gaze statistics
 local_gaze_stats = {
@@ -401,11 +552,8 @@ local_gaze_stats = {
     'last_valid_gaze': None
 }
 
-create_game_elements()
-print(f"✓ Visual elements created")
-
 def update_local_gaze_display():
-    """Update local gaze marker based on own eye tracking data"""
+    """Update local gaze marker based on own eye tracking data using corrected formula"""
     global local_gaze_stats
     
     local_gaze_stats['total_attempts'] += 1
@@ -438,100 +586,119 @@ def update_local_gaze_display():
             local_gaze_stats['last_valid_gaze'] = gaze_data
             
             try:
-                # Convert from EyeLink coordinates to PsychoPy coordinates
+                # Use the corrected formula provided
                 gaze_x = - ( gaze_data[0] - scn_width/2 + 50)
                 gaze_y = - (scn_height/2 - gaze_data[1] + 200)
                 
-                if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
-                    # Update local marker positions
+                if True: # abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     local_gaze_marker.setPos([gaze_x, gaze_y])
-                    
-                    # Animate sparkles
-                    sparkle_time = core.getTime()
-                    sparkle_offset1 = 15 * np.sin(sparkle_time * 3)
-                    sparkle_offset2 = 10 * np.cos(sparkle_time * 4)
-                    
-                    local_gaze_sparkle1.setPos([gaze_x + sparkle_offset1, gaze_y + sparkle_offset2])
-                    
-                    # Send gaze data to Computer A
                     send_gaze_data(gaze_data[0], gaze_data[1], True)
                     
             except Exception as e:
                 pass
         else:
             local_gaze_stats['missing_data'] += 1
-            # Send invalid data to Computer A
             send_gaze_data(0, 0, False)
 
 def update_remote_gaze_display():
-    """Update remote gaze marker based on received data from Computer A"""
+    """Update remote gaze marker based on received data from Computer A (only in two-player mode)"""
     global remote_gaze_data
     
+    
     if remote_gaze_data.get('valid', False):
-        # Check if data is recent (within last 100ms)
         if True: # time.time() - remote_gaze_data.get('timestamp', 0) < 0.1:
             try:
-                # Convert from EyeLink coordinates to PsychoPy coordinates
+                # Use the same corrected formula for consistency
+                gaze_x = (1.2 * remote_gaze_data['x'] - scn_width/2 + 400 - 60)
+                gaze_y = (scn_height/2 - 1.2 * remote_gaze_data['y'] + 200 - 25)
                 
-
-                gaze_x = ( 1.2* remote_gaze_data['x'] - scn_width/2 + 400 - 60) 
-                gaze_y = (scn_height/2- 1.2 *remote_gaze_data['y']  + 200 -25 )
-
-                
-                if True: #abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
-                    # Update remote marker positions
+                if True: # abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                     remote_gaze_marker.setPos([gaze_x, gaze_y])
-                    
-                    # Animate sparkles differently from local
-                    sparkle_time = core.getTime()
-                    sparkle_offset1 = 12 * np.cos(sparkle_time * 3.5)
-                    sparkle_offset2 = 8 * np.sin(sparkle_time * 4.5)
-                    
-                    remote_gaze_sparkle1.setPos([gaze_x + sparkle_offset1, gaze_y + sparkle_offset2])
                     
             except Exception as e:
                 pass
 
-def run_memory_trial():
-    """Run a single memory trial"""
-    global game_state, grid_images, current_trial
+def wait_for_round_start():
+    """Wait for Computer A to send round parameters (or generate them in single player mode)"""
+    global current_round, game_sync_data
     
-    current_trial += 1
-    target_position = random.randint(0, 35)  # Random position in 6x6 grid
+    if single_player_mode:
+        # Generate our own round parameters
+        current_round += 1
+        target_position = random.randint(0, 63)  # 0-63 for 8x8 grid
+        condition = random.choice(conditions['medium'])
+        
+        game_sync_data.update({
+            'round': current_round,
+            'target_pos': target_position,
+            'condition': condition
+        })
+        return True
+    else:
+        # Wait for round start data from Computer A
+        start_time = time.time()
+        while 'round' not in game_sync_data or game_sync_data['round'] <= current_round:
+            if time.time() - start_time > 10:  # Timeout after 10 seconds
+                return False
+            time.sleep(0.01)
+        
+        current_round = game_sync_data['round']
+        return True
+
+def run_competitive_round():
+    """Run a single competitive round (supports both single and two-player modes)"""
+    global game_state, current_round, game_sync_data, player_scores
+    
+    # Wait for round parameters (from Computer A or generate our own)
+    if not wait_for_round_start():
+        print("Timeout waiting for round start")
+        return None
+    
+    target_position = game_sync_data['target_pos']
+    condition = game_sync_data['condition']
+    
+    # Create grid with the condition
+    create_grid_from_condition(condition)
     target_category = grid_stimuli[target_position]['category']
     
-    el_tracker.sendMessage(f"TRIAL_{current_trial}_START")
+    mode_str = "SINGLE" if single_player_mode else "MULTI"
+    el_tracker.sendMessage(f"ROUND_{current_round}_START_TARGET_{target_position}_CATEGORY_{target_category}_MEDIUM_{mode_str}")
     
-    # Study phase (10 seconds)
+    # Study phase (5 seconds)
     game_state = 'study'
-    game_instructions.setText(f"Trial {current_trial}/{total_trials}: Study the grid for 10 seconds")
-    
     study_start = core.getTime()
-    while core.getTime() - study_start < 10.0:
-        # Update gaze displays
+    
+    while core.getTime() - study_start < 5.0:
         update_local_gaze_display()
-        update_remote_gaze_display()
+        if not single_player_mode:
+            update_remote_gaze_display()
         
         win.clearBuffer()
         
         # Draw game grid
         for stim in grid_stimuli:
-            stim['rect'].draw()
-            stim['text'].draw()
+            if stim['image_type'] == 'rect':
+                stim['rect'].draw()
+                stim['text'].draw()
+            else:
+                stim['image'].draw()
         
         # Draw gaze markers
         local_gaze_marker.draw()
-        local_gaze_sparkle1.draw()
-        if remote_gaze_data.get('valid', False):
+        if not single_player_mode and remote_gaze_data.get('valid', False):
             remote_gaze_marker.draw()
-            remote_gaze_sparkle1.draw()
         
-        # Draw UI elements
-        draw_ui_elements()
+        # Draw timer
+        time_left = 5.0 - (core.getTime() - study_start)
+        timer_text.setText(f"Study Time: {time_left:.1f}s")
+        timer_text.draw()
         
-        time_left = 10.0 - (core.getTime() - study_start)
-        game_instructions.setText(f"Trial {current_trial}/{total_trials}: Study the grid - {time_left:.1f}s remaining")
-        game_instructions.draw()
+        # Draw score
+        if single_player_mode:
+            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['B']}")
+        else:
+            score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
+        score_text.draw()
         
         win.flip()
         core.wait(0.016)
@@ -541,99 +708,183 @@ def run_memory_trial():
         if 'escape' in keys:
             return None
     
-    el_tracker.sendMessage(f"TRIAL_{current_trial}_STUDY_END")
+    el_tracker.sendMessage(f"ROUND_{current_round}_STUDY_END")
     
-    # Recall phase
+    # Recall phase (no time limit - wait for responses)
     game_state = 'recall'
-    game_instructions.setText(f"What was at the marked position? Press: F=Face, L=Limbs, H=House, C=Car")
-    
-    # Position question mark
     target_pos = grid_positions[target_position]
-    question_mark.setPos(target_pos)
+    target_cover.setPos([target_pos[0], target_pos[1]])  # Position the red target cover
     
-    el_tracker.sendMessage(f"TRIAL_{current_trial}_RECALL_START_POS_{target_position}")
+    el_tracker.sendMessage(f"ROUND_{current_round}_RECALL_START")
     
     response = None
+    response_time = None
     recall_start = core.getTime()
     
+    # No time limit - wait for user response
     while response is None:
-        # Update gaze displays
         update_local_gaze_display()
-        update_remote_gaze_display()
+        if not single_player_mode:
+            update_remote_gaze_display()
         
         win.clearBuffer()
         
-        # Draw covered grid
-        for cover in grid_covers:
-            cover.draw()
+        # Draw covered grid with red target square
+        for i, cover in enumerate(grid_covers):
+            if i != target_position:
+                cover.draw()
         
-        # Draw question mark
-        question_mark.draw()
+        # Draw bright red square for target position
+        target_cover.draw()
         
         # Draw gaze markers
         local_gaze_marker.draw()
-        local_gaze_sparkle1.draw()
-        if remote_gaze_data.get('valid', False):
+        if not single_player_mode and remote_gaze_data.get('valid', False):
             remote_gaze_marker.draw()
-            remote_gaze_sparkle1.draw()
         
-        # Draw UI elements
-        draw_ui_elements()
-        game_instructions.draw()
+        # Draw instructions
+        instruction_text = visual.TextStim(win, text='H=House  C=Car  F=Face  L=Limb', 
+                                         pos=[0, -scn_height//2 + 30], color='white', height=16)
+        instruction_text.draw()
+        
+        # Draw score
+        if single_player_mode:
+            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['B']}")
+        else:
+            score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
+        score_text.draw()
         
         win.flip()
         core.wait(0.016)
         
         # Check for response
         keys = event.getKeys()
-        if 'f' in keys:
-            response = 'F'
-        elif 'l' in keys:
-            response = 'L'
-        elif 'h' in keys:
-            response = 'H'
+        if 'h' in keys:
+            response = 'house'
+            response_time = core.getTime() - recall_start
         elif 'c' in keys:
-            response = 'C'
+            response = 'car'
+            response_time = core.getTime() - recall_start
+        elif 'f' in keys:
+            response = 'face'
+            response_time = core.getTime() - recall_start
+        elif 'l' in keys:
+            response = 'limb'
+            response_time = core.getTime() - recall_start
         elif 'escape' in keys:
             return None
     
-    # Record response
-    reaction_time = core.getTime() - recall_start
-    correct = (response == target_category)
+    # Record our response
+    if response:
+        game_sync_data['responses']['B'] = {
+            'answer': response,
+            'time': response_time,
+            'timestamp': time.time()
+        }
+        if not single_player_mode:
+            send_game_data('response', game_sync_data['responses']['B'])
+        el_tracker.sendMessage(f"ROUND_{current_round}_RESPONSE_B_{response}_{response_time:.3f}")
     
-    trial_result = {
-        'trial': current_trial,
-        'target_position': target_position,
-        'target_category': target_category,
-        'response': response,
-        'correct': correct,
-        'reaction_time': reaction_time
-    }
+    # Handle scoring based on mode
+    if single_player_mode:
+        # Single player scoring - only player B's response matters
+        round_result = {
+            'round': current_round,
+            'target_position': target_position,
+            'target_category': target_category,
+            'difficulty': 'medium',
+            'condition': condition,
+            'b_response': game_sync_data['responses']['B'],
+            'winner': None,
+            'points_awarded': 0,
+            'mode': 'single_player'
+        }
+        
+        if response == target_category:
+            player_scores['B'] += 1
+            round_result['winner'] = 'Player B'
+            round_result['points_awarded'] = 1
+        else:
+            round_result['winner'] = 'None (incorrect)'
+            round_result['points_awarded'] = 0
     
-    trial_results.append(trial_result)
-    
-    el_tracker.sendMessage(f"TRIAL_{current_trial}_RESPONSE_{response}_CORRECT_{correct}_RT_{reaction_time:.3f}")
-    
-    # Feedback phase (2 seconds)
-    game_state = 'feedback'
-    if correct:
-        feedback_text.setText(f"Correct! ({reaction_time:.2f}s)")
-        feedback_text.setColor('green')
     else:
-        feedback_text.setText(f"Incorrect. Answer was {target_category} ({reaction_time:.2f}s)")
-        feedback_text.setColor('red')
+        # Two-player mode - wait for both responses or timeout
+        wait_start = time.time()
+        while time.time() - wait_start < 3.0:  # Wait up to 3 seconds for other player
+            if 'A' in game_sync_data['responses']:
+                break
+            time.sleep(0.01)
+        
+        # Determine winner and scoring - Collaborative logic
+        a_response = game_sync_data['responses'].get('A')
+        b_response = game_sync_data['responses'].get('B')
+        
+        round_result = {
+            'round': current_round,
+            'target_position': target_position,
+            'target_category': target_category,
+            'difficulty': 'medium',
+            'condition': condition,
+            'a_response': a_response,
+            'b_response': b_response,
+            'winner': None,
+            'points_awarded': 0,
+            'mode': 'two_player'
+        }
+        
+        # Collaborative scoring: first player to respond determines the outcome for BOTH players
+        first_player = None
+        first_response = None
+        
+        if a_response and b_response:
+            # Both players responded - check who answered first
+            if a_response['time'] < b_response['time']:
+                first_player = 'A'
+                first_response = a_response['answer']
+            else:
+                first_player = 'B'
+                first_response = b_response['answer']
+        elif a_response and not b_response:
+            # Only A responded
+            first_player = 'A'
+            first_response = a_response['answer']
+        elif b_response and not a_response:
+            # Only B responded
+            first_player = 'B'
+            first_response = b_response['answer']
+        
+        # Check if the first responder was correct
+        if first_response == target_category:
+            # First responder was correct - both players get +1 point
+            player_scores['A'] += 1
+            player_scores['B'] += 1
+            round_result['winner'] = f'Team (Player {first_player} first)'
+            round_result['points_awarded'] = 1
+        else:
+            # First responder was incorrect - both players get 0 points
+            round_result['winner'] = f'Team failed (Player {first_player} first, wrong answer)'
+            round_result['points_awarded'] = 0
     
+    trial_results.append(round_result)
+    
+    # Show feedback (3 seconds)
+    game_state = 'feedback'
     feedback_start = core.getTime()
-    while core.getTime() - feedback_start < 2.0:
-        # Update gaze displays
+    
+    while core.getTime() - feedback_start < 3.0:
         update_local_gaze_display()
-        update_remote_gaze_display()
+        if not single_player_mode:
+            update_remote_gaze_display()
         
         win.clearBuffer()
         
         # Show correct answer
-        grid_stimuli[target_position]['rect'].draw()
-        grid_stimuli[target_position]['text'].draw()
+        if grid_stimuli[target_position]['image_type'] == 'rect':
+            grid_stimuli[target_position]['rect'].draw()
+            grid_stimuli[target_position]['text'].draw()
+        else:
+            grid_stimuli[target_position]['image'].draw()
         
         # Draw other covers
         for i, cover in enumerate(grid_covers):
@@ -642,14 +893,35 @@ def run_memory_trial():
         
         # Draw gaze markers
         local_gaze_marker.draw()
-        local_gaze_sparkle1.draw()
-        if remote_gaze_data.get('valid', False):
+        if not single_player_mode and remote_gaze_data.get('valid', False):
             remote_gaze_marker.draw()
-            remote_gaze_sparkle1.draw()
         
-        # Draw UI elements
-        draw_ui_elements()
+        # Draw feedback
+        if single_player_mode:
+            if round_result['points_awarded'] > 0:
+                feedback_msg = f"Correct! +1 point"
+                feedback_color = 'green'
+            else:
+                feedback_msg = f"Wrong answer. Correct: {target_category}"
+                feedback_color = 'red'
+        else:
+            if round_result['points_awarded'] > 0:
+                feedback_msg = f"{round_result['winner']} - Correct! +1 point for both players"
+                feedback_color = 'green'
+            else:
+                feedback_msg = f"{round_result['winner']} - No points this round"
+                feedback_color = 'red'
+        
+        feedback_text = visual.TextStim(win, text=feedback_msg, pos=[0, -scn_height//2 + 60],
+                                      color=feedback_color, height=20, bold=True)
         feedback_text.draw()
+        
+        # Draw score
+        if single_player_mode:
+            score_text.setText(f"Round {current_round}/{total_rounds} | Your Score: {player_scores['B']}")
+        else:
+            score_text.setText(f"Round {current_round}/{total_rounds} | Team Score: {player_scores['A']}")
+        score_text.draw()
         
         win.flip()
         core.wait(0.016)
@@ -659,59 +931,26 @@ def run_memory_trial():
         if 'escape' in keys:
             return None
     
-    el_tracker.sendMessage(f"TRIAL_{current_trial}_END")
-    return trial_result
-
-def draw_ui_elements():
-    """Draw status bar, legend, and corners"""
-    # Draw corners
-    for corner in corners:
-        corner.draw()
+    el_tracker.sendMessage(f"ROUND_{current_round}_END")
     
-    # Draw status
-    status_background.draw()
-    local_valid_rate = 100 * local_gaze_stats['valid_gaze_data'] / max(1, local_gaze_stats['total_attempts'])
-    remote_age = time.time() - remote_gaze_data.get('timestamp', 0)
-    remote_status = "CONNECTED" if remote_age < 0.1 else f"DELAYED"
+    # Clear responses for next round
+    game_sync_data['responses'] = {}
     
-    status_text.setText(
-        f"COMPUTER B - MEMORY GAME | Trial {current_trial}/{total_trials} | "
-        f"Gaze: {local_valid_rate:.0f}% | Remote: {remote_status} | "
-        f"Sent: {network_stats['sent']} Recv: {network_stats['received']}"
-    )
-    status_text.draw()
-    
-    # Draw legend
-    legend_bg.draw()
-    legend_text.draw()
-
-def draw_decorative_elements():
-    """Draw all decorative elements"""
-    for corner in corners:
-        corner.draw()
+    return round_result
 
 def clear_screen(win):
     win.clearBuffer()
     win.flip()
 
 def show_msg(win, text, wait_for_keypress=True):
-    msg_background = visual.Rect(win, width=scn_width*0.7, height=scn_height*0.6, 
-                                fillColor='lightcyan', lineColor='darkgreen', lineWidth=5)
-    msg = visual.TextStim(win, text, color='darkgreen', wrapWidth=scn_width*0.6, 
-                         height=22, bold=True)
+    msg = visual.TextStim(win, text, color='white', wrapWidth=scn_width*0.8, 
+                         height=24, bold=True)
     
     clear_screen(win)
     
     if wait_for_keypress:
-        start_time = core.getTime()
         while True:
-            current_time = core.getTime()
-            pulse = 0.95 + 0.05 * np.sin((current_time - start_time) * 3)
-            msg_background.setSize([scn_width*0.7*pulse, scn_height*0.6*pulse])
-            
             win.clearBuffer()
-            draw_decorative_elements()
-            msg_background.draw()
             msg.draw()
             win.flip()
             core.wait(0.016)
@@ -720,7 +959,6 @@ def show_msg(win, text, wait_for_keypress=True):
             if keys:
                 break
     else:
-        msg_background.draw()
         msg.draw()
         win.flip()
     
@@ -876,7 +1114,7 @@ try:
         
         # Run all trials
         for trial_num in range(total_trials):
-            result = run_memory_trial()
+            result = run_competitive_round)
             if result is None:  # User pressed escape
                 break
             
