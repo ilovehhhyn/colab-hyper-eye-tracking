@@ -429,6 +429,157 @@ def update_remote_gaze_display():
                 pass
 
 
+# Call this function after creating the existing visual elements and before starting the main loop
+
+def draw_ui_elements():
+    """Draw status bar, legend, and corners"""
+    # Draw corners
+    for corner in corners:
+        corner.draw()
+    
+    # Draw status
+    status_background.draw()
+    remote_age = time.time() - remote_gaze_data.get('timestamp', 0)
+    remote_status = "CONNECTED" if remote_age < 0.1 else f"DELAYED"
+    
+    status_text.setText(
+        f"COMPUTER A - MEMORY GAME | Trial {current_trial}/{total_trials} | "
+        f"Sent: {network_stats['sent']} Recv: {network_stats['received']}"
+    )
+    status_text.draw()
+    
+    # Draw legend
+    legend_bg.draw()
+    legend_text.draw()
+
+# Add these missing UI elements after the existing visual elements creation
+def create_missing_ui_elements():
+    """Create missing UI elements that are referenced but not defined"""
+    global game_instructions, question_mark, feedback_text, legend_bg, legend_text, corners
+    
+    # Game instructions text
+    game_instructions = visual.TextStim(win, text='', pos=[0, -scn_height//2 + 100],
+                                       color='white', height=18, bold=True, wrapWidth=scn_width*0.9)
+    
+    # Question mark for recall phase
+    question_mark = visual.TextStim(win, text='?', pos=[0, 0], color='red', 
+                                   height=48, bold=True)
+    
+    # Feedback text
+    feedback_text = visual.TextStim(win, text='', pos=[0, -scn_height//2 + 50],
+                                   color='white', height=24, bold=True)
+    
+    # Legend background and text
+    legend_bg = visual.Rect(win=win, width=300, height=120, 
+                           fillColor='darkblue', lineColor='lightblue', lineWidth=2,
+                           pos=[scn_width//2 - 170, -scn_height//2 + 80])
+    
+    legend_text = visual.TextStim(win, text='GREEN: Your gaze\nBLUE: Partner gaze\nF=Face L=Limb\nH=House C=Car',
+                                 pos=[scn_width//2 - 170, -scn_height//2 + 80],
+                                 color='lightblue', height=12, bold=True)
+    
+    # Corner decorations
+    corner_size = 30
+    corners = []
+    corner_positions = [
+        [-scn_width//2 + corner_size//2, scn_height//2 - corner_size//2],  # Top-left
+        [scn_width//2 - corner_size//2, scn_height//2 - corner_size//2],   # Top-right
+        [-scn_width//2 + corner_size//2, -scn_height//2 + corner_size//2], # Bottom-left
+        [scn_width//2 - corner_size//2, -scn_height//2 + corner_size//2]   # Bottom-right
+    ]
+    
+    for pos in corner_positions:
+        corner = visual.Rect(win=win, width=corner_size, height=corner_size,
+                           fillColor='gold', lineColor='orange', lineWidth=2,
+                           pos=pos)
+        corners.append(corner)
+      
+
+def clear_screen(win):
+    win.clearBuffer()
+    win.flip()
+
+def show_msg(win, text, wait_for_keypress=True):
+    msg_background = visual.Rect(win, width=scn_width*0.7, height=scn_height*0.6, 
+                                fillColor='lightcyan', lineColor='darkgreen', lineWidth=5)
+    msg = visual.TextStim(win, text, color='darkgreen', wrapWidth=scn_width*0.6, 
+                         height=22, bold=True)
+    
+    clear_screen(win)
+    
+    if wait_for_keypress:
+        start_time = core.getTime()
+        while True:
+            current_time = core.getTime()
+            pulse = 0.95 + 0.05 * np.sin((current_time - start_time) * 3)
+            msg_background.setSize([scn_width*0.7*pulse, scn_height*0.6*pulse])
+            
+            win.clearBuffer()
+
+            msg_background.draw()
+            msg.draw()
+            win.flip()
+            core.wait(0.016)
+            
+            keys = event.getKeys()
+            if keys:
+                break
+    else:
+        msg_background.draw()
+        msg.draw()
+        win.flip()
+    
+    clear_screen(win)
+
+# Show instructions
+task_msg = 'Computer B - Gaze Data Sharing + Memory Game\n\n'
+task_msg += 'This program will:\n'
+task_msg += '• Track your eye gaze (green markers)\n'
+task_msg += '• Send your gaze data to Computer A\n'
+task_msg += '• Receive and display Computer A\'s gaze (blue markers)\n'
+task_msg += '• Run a memory game with 5 trials\n\n'
+task_msg += 'Memory Game Instructions:\n'
+task_msg += '• Study a 6x6 grid of images for 10 seconds\n'
+task_msg += '• Recall what was at a marked position\n'
+task_msg += '• Press F=Face, L=Limbs, H=House, C=Car\n\n'
+task_msg += 'Network Configuration:\n'
+task_msg += f'• Local IP: {LOCAL_IP}\n'
+task_msg += f'• Remote IP: {REMOTE_IP}\n'
+task_msg += f'• Ports: {GAZE_PORT}/{SEND_PORT}\n\n'
+task_msg += 'Controls:\n'
+task_msg += '• SPACE = Recalibrate eye tracker\n'
+task_msg += '• ESCAPE = Exit program\n\n'
+if dummy_mode:
+    task_msg += 'DUMMY MODE: Simulated eye tracking\n'
+task_msg += 'Press ENTER to begin calibration'
+
+show_msg(win, task_msg)
+
+# Calibration
+print("\n5. CALIBRATION")
+print("-" * 15)
+if not dummy_mode:
+    try:
+        print("Starting calibration...")
+        el_tracker.doTrackerSetup()
+        print("✓ Calibration completed")
+        
+        el_tracker.exitCalibration()
+        el_tracker.setOfflineMode()
+        pylink.msecDelay(500)
+        
+        win.winHandle.activate()
+        win.flip()
+        event.clearEvents()
+        
+    except RuntimeError as err:
+        print('Calibration ERROR:', err)
+        el_tracker.exitCalibration()
+        win.winHandle.activate()
+        win.flip()
+
+show_msg(win, "Calibration complete!\n\nStarting gaze sharing and memory game session.\n\nPress any key to begin.")
+
 class OptimizedDyadUDPServer:
     def __init__(self, server_ip='100.1.1.10', client_ip='100.1.1.11', port=5555):
         """Initialize the optimized UDP server for dyadic communication"""
