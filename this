@@ -113,7 +113,7 @@ class OptimizedDyadUDPServer:
                 message['sender_addr'] = addr
                 message['receipt_time'] = receipt_time
                 
-                # Calculate network latency
+                # Calculate network latency (one-way trip time)
                 if 'timestamp' in message:
                     network_latency = (receipt_time - message['timestamp']) * 1000
                     message['network_latency'] = network_latency
@@ -257,11 +257,11 @@ def run_experiment():
         message = server.get_message(timeout=0.001)
         if message and message.get('type') == 'pong':
             client_ready = True
-            # Calculate round-trip time
+            # Calculate round-trip time correctly
             if 'network_latency' in message:
-                rtt = message['network_latency']
-                ping_times.append(rtt)
-                print(f"Round-trip time: {rtt:.2f}ms")
+                one_way_latency = message['network_latency']
+                ping_times.append(one_way_latency)
+                print(f"One-way latency: {one_way_latency:.2f}ms")
     
     if not client_ready:
         instructions.text = "Connection timeout. Please check network settings."
@@ -312,10 +312,13 @@ def run_experiment():
         # Wait for client sync acknowledgment
         sync_ack = server.wait_for_response('sync_ack', timeout=0.5)
         
-        # Calculate sync latency
+        # Calculate sync latency correctly
         sync_latency = None
         if sync_ack and 'network_latency' in sync_ack:
             sync_latency = sync_ack['network_latency']
+        elif sync_ack:
+            # Fallback calculation if network_latency not available
+            sync_latency = (sync_ack['timestamp'] - trial_sync_time) * 1000
         
         # Reset trial clock after sync
         trial_clock.reset()
