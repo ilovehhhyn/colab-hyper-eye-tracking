@@ -18,7 +18,7 @@ import numpy as np
 from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 from PIL import Image
 from string import ascii_letters, digits
-from psychopy import visual, core, event, data, gui
+from psychopy import visual, core, event, data, monitors, gui
 import socket
 import json
 import threading
