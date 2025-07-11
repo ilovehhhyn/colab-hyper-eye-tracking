@@ -1,0 +1,408 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Optimized Dyadic Study Client (Computer B - IP: 100.1.1.11)
+Three-stage task: Dot Display (2s) -> Response -> Feedback (1s)
+"""
+
+from psychopy import visual, core, event, data, gui
+import socket
+import json
+import threading
+import queue
+import time
+
+class OptimizedDyadUDPClient:
+    def __init__(self, client_ip='100.1.1.11', server_ip='100.1.1.10', port=5555):
+        """Initialize the optimized UDP client for dyadic communication"""
+        self.client_ip = client_ip
+        self.server_ip = server_ip
+        self.port = port
+        self.socket = None
+        self.running = False
+        self.message_queue = queue.Queue()
+        
+    def start_client(self):
+        """Start the optimized UDP client"""
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        
+        # UDP optimizations for low latency
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+        
+        # Platform-specific optimizations
+        try:
+            self.socket.setsockopt(socket.IPPROTO_UDP, socket.UDP_CORK, 0)
+        except (AttributeError, OSError):
+            pass
+        
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_DONTFRAG, 1)
+        except (AttributeError, OSError):
+            pass
+        
+        # Bind to address
+        try:
+            self.socket.bind((self.client_ip, self.port))
+            print(f"Bound to {self.client_ip}:{self.port}")
+        except OSError as e:
+            print(f"Could not bind to {self.client_ip}:{self.port}: {e}")
+            try:
+                self.socket.bind(('0.0.0.0', self.port))
+                print(f"Successfully bound to 0.0.0.0:{self.port}")
+            except OSError as e2:
+                print(f"Failed to bind: {e2}")
+                raise
+        
+        self.socket.settimeout(0.01)
+        self.running = True
+        print(f"Optimized UDP Client started")
+        
+        # Start receiving thread
+        self.receive_thread = threading.Thread(target=self._receive_messages)
+        self.receive_thread.daemon = True
+        self.receive_thread.start()
+        
+    def send_message(self, message_type, data=None):
+        """Send a UDP message to the server with high precision timing"""
+        if not self.socket:
+            return False
+            
+        timestamp = time.perf_counter()
+        message = {
+            'type': message_type,
+            'timestamp': timestamp,
+            'data': data
+        }
+        
+        try:
+            message_json = json.dumps(message, separators=(',', ':'))
+            message_bytes = message_json.encode('utf-8')
+            self.socket.sendto(message_bytes, (self.server_ip, self.port))
+            return True
+        except Exception as e:
+            print(f"Error sending message: {e}")
+            return False
+            
+    def _receive_messages(self):
+        """Receive UDP messages from server with minimal processing delay"""
+        while self.running:
+            try:
+                data, addr = self.socket.recvfrom(1024)
+                receipt_time = time.perf_counter()
+                
+                message = json.loads(data.decode('utf-8'))
+                message['sender_addr'] = addr
+                message['receipt_time'] = receipt_time
+                
+                if 'timestamp' in message:
+                    network_latency = (receipt_time - message['timestamp']) * 1000
+                    message['network_latency'] = network_latency
+                
+                self.message_queue.put(message)
+                
+                # Auto-respond to ping with pong
+                if message.get('type') == 'ping':
+                    self.send_message('pong', {'client_ready': True})
+                    
+            except socket.timeout:
+                continue
+            except Exception as e:
+                if self.running:
+                    print(f"Error receiving message: {e}")
+                    
+    def get_message(self, timeout=0):
+        """Get a message from the queue"""
+        try:
+            return self.message_queue.get(timeout=timeout)
+        except queue.Empty:
+            return None
+            
+    def wait_for_message(self, expected_type, timeout=30):
+        """Wait for a specific type of message from server"""
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < timeout:
+            message = self.get_message(timeout=0.001)
+            if message and message.get('type') == expected_type:
+                return message
+        return None
+        
+    def precise_sync_send(self, message_type, data=None):
+        """Send message with precise timing for synchronization"""
+        timestamp = time.perf_counter()
+        message = {
+            'type': message_type,
+            'timestamp': timestamp,
+            'data': data
+        }
+        message_bytes = json.dumps(message, separators=(',', ':')).encode('utf-8')
+        self.socket.sendto(message_bytes, (self.server_ip, self.port))
+        return timestamp
+        
+    def close(self):
+        """Close the client"""
+        self.running = False
+        if self.receive_thread:
+            self.receive_thread.join(timeout=1)
+        if self.socket:
+            self.socket.close()
+
+def run_experiment():
+    """Run the three-stage task experiment on Computer B"""
+    
+    # Get participant info
+    exp_info = {
+        'participant_B_id': '',
+        'session': '001',
+        'client_ip': '100.1.1.11',
+        'server_ip': '100.1.1.10'
+    }
+    
+    dlg = gui.DlgFromDict(dictionary=exp_info, 
+                          title='Dyadic Study - Computer B (Client)',
+                          order=['participant_B_id', 'session'])
+    if not dlg.OK:
+        core.quit()
+    
+    # Initialize UDP client
+    client = OptimizedDyadUDPClient(
+        client_ip=exp_info['client_ip'],
+        server_ip=exp_info['server_ip'],
+        port=5555
+    )
+    
+    # Create window
+    win = visual.Window(
+        size=[800, 600],
+        fullscr=False,
+        screen=0,
+        winType='pyglet',
+        allowGUI=True,
+        color=[0, 0, 0],
+        units='height',
+        waitBlanking=False,
+        useFBO=False
+    )
+    
+    # Create stimuli
+    instructions = visual.TextStim(win, 
+        text="Starting client...", height=0.05)
+    
+    # Dot display stage
+    dot = visual.Circle(win, radius=0.08, fillColor='white', pos=(0, 0))
+    stage_text = visual.TextStim(win, text="", height=0.04, pos=(0, -0.3))
+    
+    # Response stage
+    response_prompt = visual.TextStim(win, 
+        text="Press A or F", height=0.08, pos=(0, 0))
+    your_response = visual.TextStim(win, 
+        text="", height=0.05, pos=(0, -0.2), color='yellow')
+    other_response = visual.TextStim(win, 
+        text="", height=0.05, pos=(0, -0.3), color='cyan')
+    
+    # Feedback stage
+    feedback_text = visual.TextStim(win, 
+        text="", height=0.1, pos=(0, 0))
+    score_text = visual.TextStim(win, 
+        text="", height=0.06, pos=(0, -0.2))
+    
+    # Status indicators
+    status_text = visual.TextStim(win, text="", height=0.03, pos=(0, -0.4))
+    latency_text = visual.TextStim(win, text="", height=0.03, pos=(0, 0.4), color='green')
+    
+    # Start client
+    instructions.draw()
+    win.flip()
+    client.start_client()
+    
+    # Wait for server to start experiment
+    instructions.text = "Waiting for Computer A to start experiment..."
+    instructions.draw()
+    win.flip()
+    
+    start_msg = client.wait_for_message('start_experiment', timeout=300)
+    if not start_msg:
+        instructions.text = "No start signal received!"
+        instructions.draw()
+        win.flip()
+        core.wait(3)
+        client.close()
+        win.close()
+        core.quit()
+    
+    # Send acknowledgment
+    client.send_message('ack_start')
+    
+    # Extract experiment parameters
+    n_trials = start_msg['data']['n_trials']
+    
+    # Main experiment loop
+    data_log = []
+    total_score = 0
+    running = True
+    
+    while running:
+        message = client.get_message(timeout=0.001)
+        
+        if not message:
+            continue
+            
+        # ========== STAGE 1: DOT DISPLAY ==========
+        if message['type'] == 'stage_dot_display':
+            print(f"\n=== TRIAL {message['data']['trial_number']} ===")
+            print("Stage 1: Dot Display")
+            
+            # Send sync acknowledgment immediately
+            client.precise_sync_send('stage_sync_ack', {
+                'stage': 'dot_display'
+            })
+            
+            trial_num = message['data']['trial_number']
+            sync_latency = message.get('network_latency', 0)
+            
+            # Display dot for 2 seconds
+            stage_clock = core.Clock()
+            while stage_clock.getTime() < 2.0:
+                dot.draw()
+                stage_text.text = f"Trial {trial_num} - Dot Display"
+                stage_text.draw()
+                latency_text.text = f"Sync: {sync_latency:.1f}ms"
+                latency_text.draw()
+                win.flip()
+                
+                # Check for escape
+                keys = event.getKeys(['escape'])
+                if 'escape' in keys:
+                    running = False
+                    break
+        
+        # ========== STAGE 2: RESPONSE COLLECTION ==========
+        elif message['type'] == 'stage_response':
+            print("Stage 2: Response Collection")
+            
+            # Send sync acknowledgment immediately
+            client.precise_sync_send('stage_sync_ack', {
+                'stage': 'response'
+            })
+            
+            trial_num = message['data']['trial_number']
+            
+            # Initialize response tracking
+            client_response = None
+            server_response = None
+            client_rt = None
+            response_received = {'client': False, 'server': False}
+            
+            response_clock = core.Clock()
+            
+            # Collect responses until both respond
+            while not (response_received['client'] and response_received['server']):
+                # Display response prompt
+                response_prompt.draw()
+                your_response.text = f"Your response: {client_response if client_response else '...'}"
+                other_response.text = f"Other response: {server_response if server_response else '...'}"
+                stage_text.text = f"Trial {trial_num} - Waiting for responses"
+                
+                your_response.draw()
+                other_response.draw()
+                stage_text.draw()
+                win.flip()
+                
+                # Check for client (this computer) response
+                if not response_received['client']:
+                    keys = event.getKeys(['a', 'f', 'escape'], timeStamped=response_clock)
+                    if keys:
+                        key, rt = keys[0]
+                        if key == 'escape':
+                            running = False
+                            break
+                        elif key in ['a', 'f']:
+                            client_response = key.upper()
+                            client_rt = rt
+                            response_received['client'] = True
+                            
+                            # Send response to server
+                            client.send_message('response_update', {
+                                'responder': 'client',
+                                'response': client_response,
+                                'rt': client_rt
+                            })
+                
+                # Check for server response messages
+                resp_msg = client.get_message(timeout=0.001)
+                if resp_msg and resp_msg.get('type') == 'response_update':
+                    data = resp_msg['data']
+                    if data['responder'] == 'server' and not response_received['server']:
+                        server_response = data['response']
+                        response_received['server'] = True
+        
+        # ========== STAGE 3: FEEDBACK ==========
+        elif message['type'] == 'stage_feedback':
+            print("Stage 3: Feedback")
+            
+            # Send sync acknowledgment immediately
+            client.precise_sync_send('stage_sync_ack', {
+                'stage': 'feedback'
+            })
+            
+            trial_num = message['data']['trial_number']
+            trial_score = message['data']['trial_score']
+            total_score = message['data']['total_score']
+            first_responder = message['data']['first_responder']
+            first_response = message['data']['first_response']
+            
+            # Display feedback for 1 second
+            feedback_clock = core.Clock()
+            while feedback_clock.getTime() < 1.0:
+                feedback_text.text = f"+{trial_score}"
+                feedback_text.color = 'green' if trial_score > 0 else 'red'
+                score_text.text = f"Total Score: {total_score}/{trial_num}"
+                stage_text.text = f"First: {first_responder} ({first_response})"
+                
+                feedback_text.draw()
+                score_text.draw()
+                stage_text.draw()
+                win.flip()
+            
+            # Log trial data (we'll collect this from the feedback stage)
+            trial_log = {
+                'trial': trial_num,
+                'trial_score': trial_score,
+                'total_score': total_score,
+                'first_responder': first_responder,
+                'first_response': first_response
+            }
+            data_log.append(trial_log)
+        
+        # ========== END EXPERIMENT ==========
+        elif message['type'] == 'end_experiment':
+            running = False
+    
+    # Save data
+    import pandas as pd
+    df = pd.DataFrame(data_log)
+    filename = f'dyad_client_{exp_info["participant_B_id"]}_{time.strftime("%Y%m%d_%H%M%S")}.csv'
+    df.to_csv(filename, index=False)
+    
+    # Final results
+    if data_log:
+        final_total_score = data_log[-1]['total_score']
+        n_completed_trials = len(data_log)
+        final_score_pct = (final_total_score / n_completed_trials) * 100
+        
+        instructions.text = f"Experiment Complete!\n\nFinal Score: {final_total_score}/{n_completed_trials} ({final_score_pct:.1f}%)\nData saved to {filename}"
+    else:
+        instructions.text = f"Experiment Complete!\nData saved to {filename}"
+    
+    instructions.draw()
+    win.flip()
+    core.wait(5)
+    
+    # Cleanup
+    client.close()
+    win.close()
+    core.quit()
+
+if __name__ == '__main__':
+    run_experiment()
