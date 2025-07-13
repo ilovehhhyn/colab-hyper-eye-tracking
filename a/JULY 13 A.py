@@ -531,6 +531,65 @@ def show_msg(win, text, wait_for_keypress=True):
         win.flip()
     
     clear_screen(win)
+def terminate_task():
+    global el_tracker, send_socket, receive_socket
+    
+    print("\nCleaning up...")
+    
+    # Save game results
+    if trial_results:
+        results_file = os.path.join(session_folder, f"{session_identifier}_memory_results.txt")
+        with open(results_file, 'w') as f:
+            f.write("Trial\tPosition\tTarget\tResponse\tCorrect\tRT\n")
+            for result in trial_results:
+                f.write(f"{result['trial']}\t{result['target_position']}\t{result['target_category']}\t"
+                       f"{result['response']}\t{result['correct']}\t{result['reaction_time']:.3f}\n")
+        
+        correct_count = sum(1 for r in trial_results if r['correct'])
+        avg_rt = np.mean([r['reaction_time'] for r in trial_results])
+        print(f"✓ Game results saved: {correct_count}/{len(trial_results)} correct, avg RT: {avg_rt:.2f}s")
+    
+    # Close network sockets
+    try:
+        send_socket.close()
+        receive_socket.close()
+        print("✓ Network sockets closed")
+    except:
+        pass
+    
+    if el_tracker and el_tracker.isConnected():
+        try:
+            if el_tracker.isRecording():
+                el_tracker.stopRecording()
+            el_tracker.setOfflineMode()
+            el_tracker.sendCommand('clear_screen 0')
+            pylink.msecDelay(500)
+            el_tracker.closeDataFile()
+            
+            # Download EDF file
+            local_edf = os.path.join(session_folder, session_identifier + '.EDF')
+            try:
+                el_tracker.receiveDataFile(edf_file, local_edf)
+                print(f"✓ Data file saved: {local_edf}")
+            except RuntimeError as error:
+                print('Data file download error:', error)
+            
+            el_tracker.close()
+        except Exception as e:
+            print(f"Cleanup error: {e}")
+    
+    # Print final statistics
+    if local_gaze_stats['total_attempts'] > 0:
+        valid_rate = 100 * local_gaze_stats['valid_gaze_data'] / local_gaze_stats['total_attempts']
+        print(f"\nFinal Statistics:")
+        print(f"  Local gaze valid: {local_gaze_stats['valid_gaze_data']}/{local_gaze_stats['total_attempts']} ({valid_rate:.1f}%)")
+        print(f"  Network sent: {network_stats['sent']}")
+        print(f"  Network received: {network_stats['received']}")
+        print(f"  Network errors: {network_stats['errors']}")
+    
+    win.close()
+    core.quit()
+    sys.exit()
 
 # Show instructions
 task_msg = 'Computer B - Gaze Data Sharing + Memory Game\n\n'
