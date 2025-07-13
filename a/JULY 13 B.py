@@ -20,6 +20,7 @@ import numpy as np
 import socket
 import threading
 import json
+import pandas as pd
 from psychopy import visual, core, event, monitors, gui
 from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 from PIL import Image
