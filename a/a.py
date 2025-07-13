@@ -580,7 +580,7 @@ if not dummy_mode:
 
 show_msg(win, "Calibration complete!\n\nStarting gaze sharing and memory game session.\n\nPress any key to begin.")
 
-prrint('we got here')
+print('we got here')
 class OptimizedDyadUDPServer:
     def __init__(self, server_ip='100.1.1.10', client_ip='100.1.1.11', port=5555):
         """Initialize the optimized UDP server for dyadic communication"""
