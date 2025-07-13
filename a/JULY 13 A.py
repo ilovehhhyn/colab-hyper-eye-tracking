@@ -837,7 +837,7 @@ def run_integrated_experiment():
     
     while not client_ready and timeout_clock.getTime() < 60:
         if int(timeout_clock.getTime()) % 5 == 0:  # Every 5 seconds
-        print(f"A: Still waiting for B... {timeout_clock.getTime():.0f}s")
+            print(f"A: Still waiting for B... {timeout_clock.getTime():.0f}s")
         
         # Update gaze sharing while waiting
         update_local_gaze_display()
