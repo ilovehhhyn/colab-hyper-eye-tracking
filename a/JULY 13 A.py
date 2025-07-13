@@ -25,6 +25,7 @@ import threading
 import queue
 import time
 import struct
+import pandas as pd 
 
 
 # Network Configuration
@@ -581,6 +582,14 @@ if not dummy_mode:
 show_msg(win, "Calibration complete!\n\nStarting gaze sharing and memory game session.\n\nPress any key to begin.")
 
 print('we got here')
+
+print("Reactivating window...")
+win.winHandle.activate()
+win.flip()
+event.clearEvents()
+core.wait(1.0)  # Longer pause
+print("Window reactivated, continuing...")
+
 class OptimizedDyadUDPServer:
     def __init__(self, server_ip='100.1.1.10', client_ip='100.1.1.11', port=5555):
         """Initialize the optimized UDP server for dyadic communication"""
@@ -768,6 +777,9 @@ def run_integrated_experiment():
     timeout_clock = core.Clock()
     
     while not client_ready and timeout_clock.getTime() < 60:
+        if int(timeout_clock.getTime()) % 5 == 0:  # Every 5 seconds
+        print(f"A: Still waiting for B... {timeout_clock.getTime():.0f}s")
+        
         # Update gaze sharing while waiting
         update_local_gaze_display()
         update_remote_gaze_display()
@@ -786,7 +798,7 @@ def run_integrated_experiment():
         win.flip()
         
         # Check for client connection
-        if time.perf_counter() % 0.1 < 0.01:
+        if int(timeout_clock.getTime() * 10) % 1 == 0:  # Every 100ms more reliably
             task_server.precise_sync_send('ping', {'server_ready': True})
         
         message = task_server.get_message(timeout=0.001)
