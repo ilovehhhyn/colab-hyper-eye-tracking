@@ -158,11 +158,6 @@ if not setup_network():
     print("Failed to setup network. Exiting...")
     sys.exit()
 
-# Start receiving thread
-receive_thread = threading.Thread(target=receive_gaze_data, daemon=True)
-receive_thread.start()
-print("✓ Network communication started")
-
 # Connect to EyeLink
 print("\n1. CONNECTING TO EYELINK")
 print("-" * 30)
