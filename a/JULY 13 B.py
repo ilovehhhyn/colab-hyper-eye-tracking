@@ -641,6 +641,14 @@ if not dummy_mode:
 
 show_msg(win, "Calibration complete!\n\nStarting gaze sharing and memory game session.\n\nPress any key to begin.")
 
+# Add this right after calibration in both scripts:
+print("Reactivating window...")
+win.winHandle.activate()
+win.flip()
+event.clearEvents()
+core.wait(1.0)  # Longer pause
+print("Window reactivated, continuing...")
+
 
 class OptimizedDyadUDPClient:
     def __init__(self, client_ip='100.1.1.11', server_ip='100.1.1.10', port=5555):
@@ -815,6 +823,9 @@ def run_integrated_experiment():
     timeout_clock = core.Clock()
     
     while not start_msg and timeout_clock.getTime() < 300:
+        if int(timeout_clock.getTime()) % 5 == 0:  # Every 5 seconds
+        print(f"B: Still waiting for A to start... {timeout_clock.getTime():.0f}s")
+        
         # Update gaze sharing while waiting
         update_local_gaze_display()
         update_remote_gaze_display()
