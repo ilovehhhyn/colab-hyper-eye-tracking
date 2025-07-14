@@ -575,9 +575,9 @@ class RobustSyncClient:
                 message = self.message_queue.get(timeout=0.1)
                 if message.get('type') == expected_type:
                     return message
-                #else:
+                else:
                     # Put it back if it's not what we want
-                    # self.message_queue.put(message)
+                    self.message_queue.put(message)
             except queue.Empty:
                 continue
         print(f"B: Timeout waiting for {expected_type}")
