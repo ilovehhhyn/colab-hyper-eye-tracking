@@ -572,7 +572,7 @@ class RobustSyncClient:
         start_time = time.perf_counter()
         while time.perf_counter() - start_time < timeout:
             try:
-                message = self.message_queue.get(timeout=0.1)
+                message = self.message_queue.get(timeout=0.01)
                 if message.get('type') == expected_type:
                     return message
                 else:
