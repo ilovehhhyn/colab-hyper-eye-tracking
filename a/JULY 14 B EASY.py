@@ -769,27 +769,6 @@ Add these functions and replace the existing run_synchronized_experiment
 
 # Add these new functions after the existing utility functions (identical to Computer A)
 
-def load_conditions():
-    """Load conditions from dyad_conditions.json"""
-    global conditions
-    try:
-        with open('dyad_conditions.json', 'r') as f:
-            data = json.load(f)
-            conditions = {
-                'medium': data['top_layouts_array_fixed_16']  # Only medium (16-element arrays for 4x4 patterns)
-            }
-        print("✓ Conditions loaded from dyad_conditions.json (medium difficulty only)")
-    except FileNotFoundError:
-        print("dyad_conditions.json not found. Using default medium conditions.")
-        # Default conditions if file not found
-        conditions = {
-            'medium': [[2, 0, 1, 3, 2, 3, 0, 1, 3, 1, 2, 1, 0, 2, 0, 3]]  # 16-element default
-        }
-    except Exception as e:
-        print(f"Error loading conditions: {e}")
-        conditions = {
-            'medium': [[2, 0, 1, 3, 2, 3, 0, 1, 3, 1, 2, 1, 0, 2, 0, 3]]
-        }
 
 def load_all_images():
     """Load all images from stimuli folder"""
@@ -831,8 +810,30 @@ def load_all_images():
     
     print("✓ Image paths loaded")
 
+def load_conditions():
+    """Load conditions from dyad_conditions.json - EASY MODE (2x2 logical)"""
+    global conditions
+    try:
+        with open('dyad_conditions.json', 'r') as f:
+            data = json.load(f)
+            conditions = {
+                'easy': data['top_layouts_array_fixed_4']  # Easy (4-element arrays for 2x2 patterns)
+            }
+        print("✓ Conditions loaded from dyad_conditions.json (easy difficulty - 2x2 logical)")
+    except FileNotFoundError:
+        print("dyad_conditions.json not found. Using default easy conditions.")
+        # Default conditions if file not found
+        conditions = {
+            'easy': [[2, 0, 1, 3], [0, 1, 2, 3], [3, 0, 1, 2]]  # 4-element defaults
+        }
+    except Exception as e:
+        print(f"Error loading conditions: {e}")
+        conditions = {
+            'easy': [[2, 0, 1, 3], [0, 1, 2, 3], [3, 0, 1, 2]]
+        }
+
 def create_synchronized_grid(condition_array, seed):
-    """Create 8x8 grid from condition array using shared seed"""
+    """Create 8x8 grid from condition array using shared seed - EASY MODE (2x2 logical)"""
     global grid_stimuli, grid_covers, grid_positions, target_cover, cell_size
     
     # Set random seed for consistent image selection
@@ -843,7 +844,7 @@ def create_synchronized_grid(condition_array, seed):
     grid_covers = []
     grid_positions = []
     
-    # Grid setup - 8x8 physical grid representing 4x4 logical pattern
+    # Grid setup - 8x8 physical grid representing 2x2 logical pattern
     physical_grid_size = 8
     
     # Calculate grid spacing
@@ -861,7 +862,7 @@ def create_synchronized_grid(condition_array, seed):
     start_x = -(physical_grid_size - 1) * grid_spacing / 2
     start_y = (physical_grid_size - 1) * grid_spacing / 2
     
-    # Medium difficulty: condition is a 16-element array representing 4x4 pattern
+    # Easy difficulty: condition is a 4-element array representing 2x2 pattern
     condition_categories = [CATEGORY_MAP[num] for num in condition_array]
     
     # Select one random image from each category for this round
@@ -872,17 +873,17 @@ def create_synchronized_grid(condition_array, seed):
         else:
             selected_images[category] = 0
     
-    # Each position in 4x4 becomes a 2x2 block in 8x8
-    for med_row in range(4):
-        for med_col in range(4):
-            category = condition_categories[med_row * 4 + med_col]
+    # Each position in 2x2 becomes a 4x4 block in 8x8
+    for easy_row in range(2):
+        for easy_col in range(2):
+            category = condition_categories[easy_row * 2 + easy_col]
             selected_image_idx = selected_images[category]
             
-            # Fill 2x2 block with this image
-            for block_row in range(2):
-                for block_col in range(2):
-                    row = med_row * 2 + block_row
-                    col = med_col * 2 + block_col
+            # Fill 4x4 block with this image
+            for block_row in range(4):
+                for block_col in range(4):
+                    row = easy_row * 4 + block_row
+                    col = easy_col * 4 + block_col
                     x_pos = start_x + col * grid_spacing
                     y_pos = start_y - row * grid_spacing
                     
@@ -924,7 +925,7 @@ def create_synchronized_grid(condition_array, seed):
                               fillColor='red', lineColor='white', lineWidth=3,
                               pos=[0, 0])  # Position will be set during recall phase
     
-    print(f"✓ Synchronized grid created with seed {seed}")
+    print(f"✓ Synchronized grid created with seed {seed} (easy difficulty - 2x2 logical pattern)")
 
 def draw_study_grid():
     """Draw the uncovered grid during study phase"""
