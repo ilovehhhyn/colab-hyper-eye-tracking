@@ -710,8 +710,11 @@ def update_local_gaze_display():
             local_gaze_stats['valid_gaze_data'] += 1
             
             # Convert coordinates and update display
-            gaze_x = -(gaze_data[0] - scn_width/2 + 50)
-            gaze_y = -(scn_height/2 - gaze_data[1] + 200)
+            gaze_x = -(gaze_data[0] - scn_width/2 )
+            gaze_y = -(scn_height/2 - gaze_data[1])
+
+            print(gaze_x)
+            print(gaze_y)
             
             if True: # abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                 local_gaze_marker.setPos([gaze_x, gaze_y])
