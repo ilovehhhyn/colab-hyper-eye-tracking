@@ -713,7 +713,7 @@ def update_local_gaze_display():
             gaze_x = -(gaze_data[0] - scn_width/2 + 50)
             gaze_y = -(scn_height/2 - gaze_data[1] + 200)
             
-            if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
+            if True: # abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                 local_gaze_marker.setPos([gaze_x, gaze_y])
                 
                 # Animate sparkles
