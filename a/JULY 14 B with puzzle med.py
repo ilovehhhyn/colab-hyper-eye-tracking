@@ -1071,6 +1071,8 @@ def run_synchronized_experiment():
                     stage_text.draw()
                     
                     win.flip()
+                    core.wait(0.016)
+
                     
                     keys = event.getKeys(['escape'])
                     if 'escape' in keys:
