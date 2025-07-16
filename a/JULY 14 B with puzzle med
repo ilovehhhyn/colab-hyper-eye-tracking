@@ -729,6 +729,25 @@ def update_local_gaze_display():
             send_gaze_data(0, 0, False)
 
 def update_remote_gaze_display():
+    """Update remote gaze marker"""
+    global remote_gaze_data
+    
+    if not GAZE_SHARING_ACTIVE:
+        return  # Don't display when not sharing
+    
+    if remote_gaze_data.get('valid', False):
+        try:
+            gaze_x = (1.2 * remote_gaze_data['x'] - scn_width/2 + 400 - 60)
+            gaze_y = (scn_height/2 - 1.2 * remote_gaze_data['y'] + 200 - 25)
+            
+            remote_gaze_marker.setPos([gaze_x, gaze_y])
+            
+            sparkle_time = core.getTime()
+            sparkle_offset1 = 12 * np.cos(sparkle_time * 3.5)
+            sparkle_offset2 = 8 * np.sin(sparkle_time * 4.5)
+            remote_gaze_sparkle1.setPos([gaze_x + sparkle_offset1, gaze_y + sparkle_offset2])
+            
+        except Exception as e:
             pass
 
 # Additional global variables for memory game
