@@ -1096,6 +1096,8 @@ def run_synchronized_experiment():
                 GAZE_SHARING_ACTIVE = True
                 
                 # Reset target square color for new trial
+                event.clearEvents()  # Clear any leftover keypresses
+
                 target_square_color = 'red'
                 
                 # Acknowledge sync
@@ -1160,11 +1162,16 @@ def run_synchronized_experiment():
                                 })
                     else:
                         # Still check for escape even after responding
-                        keys = event.getKeys(['escape'])
-                        if keys and 'escape' in keys:
-                            GAZE_SHARING_ACTIVE = False
-                            sync_client.send_message('end_experiment')
-                            return
+                        keys = event.getKeys(['f', 'l', 'h', 'c', 'escape'])
+                        if keys:
+                            for key_info in keys:
+                                key = key_info[0] if isinstance(key_info, tuple) else key_info
+                                if key == 'escape':
+                                    GAZE_SHARING_ACTIVE = False
+                                    sync_client.send_message('end_experiment')
+                                    return
+                                # Silently discard f, l, h, c keys
+
                     
                     # Check for server response
                     resp_msg = sync_client.get_message(timeout=0.1)
