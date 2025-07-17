@@ -948,22 +948,27 @@ def draw_study_grid():
         else:
             stim['image'].draw()
 
-def draw_recall_grid(target_pos):
-    """Draw covered grid with red target marker"""
+target_square_color = 'red'  # Controls the color of the target square
+
+# 2. MODIFY draw_recall_grid() FUNCTION (replace the existing function)
+def draw_recall_grid(target_pos, square_color='red'):
+    """Draw covered grid with target marker in specified color"""
     # Draw all covers except target position
     for i, cover in enumerate(grid_covers):
         if i != target_pos:
             cover.draw()
     
-    # Draw target cover (red) and question mark
+    # Draw target cover with specified color and question mark
     target_pos_coords = grid_positions[target_pos]
     target_cover.setPos(target_pos_coords)
+    target_cover.setFillColor(square_color)  # Use the specified color
     target_cover.draw()
     
     # Draw question mark at target position
     question_mark = visual.TextStim(win, text='?', pos=target_pos_coords, 
                                    color='white', height=cell_size//2, bold=True)
     question_mark.draw()
+
 
 def evaluate_response(response, correct_category):
     """Check if response is correct"""
@@ -1111,9 +1116,16 @@ def run_synchronized_experiment():
         
         GAZE_SHARING_ACTIVE = False  # DEACTIVATE between stages
         
+# 3. MODIFY STAGE 2 in run_synchronized_experiment() (replace the entire Stage 2 section)
         # ========== STAGE 2: RESPONSE COLLECTION ==========
         print("A: Stage 2 - Response Collection")
         GAZE_SHARING_ACTIVE = True  # ACTIVATE gaze sharing
+        
+        # Clear any leftover keypresses from previous trials
+        event.clearEvents()
+        
+        # Reset target square color for new trial
+        target_square_color = 'red'
         
         sync_server.send_message('stage_response', {
             'trial_number': current_trial,
@@ -1124,7 +1136,7 @@ def run_synchronized_experiment():
         if not sync_ack:
             print("A: Warning - No sync ack for response")
         
-        # Response collection WITH gaze sharing (UNCHANGED LOGIC)
+        # Response collection WITH gaze sharing and color feedback
         server_response = None
         client_response = None
         server_rt = None
@@ -1148,15 +1160,15 @@ def run_synchronized_experiment():
                     remote_gaze_marker.draw()
                     remote_gaze_sparkle1.draw()
             
-            # Draw covered grid with target
-            draw_recall_grid(target_position)
+            # Draw covered grid with target (color changes after first response)
+            draw_recall_grid(target_position, target_square_color)
             response_prompt.draw()
             stage_text.setText(f"Trial {current_trial} - What was at the red position?")
             stage_text.draw()
             
             win.flip()
             
-            # Check for server response (UNCHANGED)
+            # Check for server response
             if not response_received['server']:
                 keys = event.getKeys(['f', 'l', 'h', 'c', 'escape'], timeStamped=response_clock)
                 if keys:
@@ -1171,9 +1183,12 @@ def run_synchronized_experiment():
                         server_rt = rt
                         response_received['server'] = True
                         
+                        # Check if this is the first response
                         if first_responder is None:
                             first_responder = 'server'
                             first_response = server_response
+                            target_square_color = 'green'  # Turn square green!
+                            print("A: First response detected - square turned green")
                         
                         sync_server.send_message('response_update', {
                             'responder': 'server',
@@ -1181,25 +1196,31 @@ def run_synchronized_experiment():
                             'rt': server_rt
                         })
             else:
-                keys = event.getKeys(['f', 'l', 'h', 'c', 'escape'], timeStamped=response_clock)
+                # Capture and discard response keys, only process escape
+                keys = event.getKeys(['f', 'l', 'h', 'c', 'escape'])
                 if keys:
-                    key, rt = keys[0]
-                    if key == 'escape':
-                        GAZE_SHARING_ACTIVE = False
-                        sync_server.send_message('end_experiment')
-                        terminate_task()
-                        return
+                    for key_info in keys:
+                        key = key_info[0] if isinstance(key_info, tuple) else key_info
+                        if key == 'escape':
+                            GAZE_SHARING_ACTIVE = False
+                            sync_server.send_message('end_experiment')
+                            terminate_task()
+                            return
+                        # Silently discard f, l, h, c keys
             
-            # Check for client response (UNCHANGED)
+            # Check for client response
             resp_msg = sync_server.wait_for_response('response_update', timeout=0.1)
             if resp_msg and resp_msg.get('data', {}).get('responder') == 'client':
                 if not response_received['client']:
                     client_response = resp_msg['data']['response']
                     response_received['client'] = True
                     
+                    # Check if this is the first response
                     if first_responder is None:
                         first_responder = 'client'
                         first_response = client_response
+                        target_square_color = 'green'  # Turn square green!
+                        print("A: First response (from client) detected - square turned green")
         
         GAZE_SHARING_ACTIVE = False  # DEACTIVATE between stages
         
