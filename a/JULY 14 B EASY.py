@@ -710,8 +710,8 @@ def update_local_gaze_display():
             local_gaze_stats['valid_gaze_data'] += 1
             
             # Convert coordinates and update display
-            gaze_x = -(gaze_data[0] - scn_width/2 + 50)
-            gaze_y = -(scn_height/2 - gaze_data[1] + 200)
+            gaze_x = (gaze_data[0] - scn_width/2 )
+            gaze_y = (scn_height/2 - gaze_data[1] )
             
             if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                 local_gaze_marker.setPos([gaze_x, gaze_y])
@@ -729,6 +729,25 @@ def update_local_gaze_display():
             send_gaze_data(0, 0, False)
 
 def update_remote_gaze_display():
+    """Update remote gaze marker"""
+    global remote_gaze_data
+    
+    if not GAZE_SHARING_ACTIVE:
+        return  # Don't display when not sharing
+    
+    if remote_gaze_data.get('valid', False):
+        try:
+            gaze_x = (remote_gaze_data['x'] - scn_width/2 )
+            gaze_y = (scn_height/2 - remote_gaze_data['y'] )
+            
+            remote_gaze_marker.setPos([gaze_x, gaze_y])
+            
+            sparkle_time = core.getTime()
+            sparkle_offset1 = 12 * np.cos(sparkle_time * 3.5)
+            sparkle_offset2 = 8 * np.sin(sparkle_time * 4.5)
+            remote_gaze_sparkle1.setPos([gaze_x + sparkle_offset1, gaze_y + sparkle_offset2])
+            
+        except Exception as e:
             pass
 
 # Additional global variables for memory game
@@ -1058,6 +1077,7 @@ def run_synchronized_experiment():
                     if 'escape' in keys:
                         GAZE_SHARING_ACTIVE = False
                         sync_client.send_message('end_experiment')
+                        terminate_task()
                         return
                 
                 GAZE_SHARING_ACTIVE = False
@@ -1066,6 +1086,8 @@ def run_synchronized_experiment():
                 # ========== STAGE 2: RESPONSE COLLECTION ==========
                 print("B: Stage 2 - Response Collection")
                 GAZE_SHARING_ACTIVE = True
+
+                event.clearEvents()  # Clear any leftover keypresses
                 
                 # Acknowledge sync
                 sync_client.send_message('stage_sync_ack', {'ready': True})
@@ -1109,6 +1131,7 @@ def run_synchronized_experiment():
                             if key == 'escape':
                                 GAZE_SHARING_ACTIVE = False
                                 sync_client.send_message('end_experiment')
+                                terminate_task()
                                 return
                             elif key in ['f', 'l', 'h', 'c']:
                                 client_response = key.upper()
@@ -1125,13 +1148,17 @@ def run_synchronized_experiment():
                                     'rt': client_rt
                                 })
                     else:
-                        keys = event.getKeys(['f', 'l', 'h', 'c', 'escape'], timeStamped=response_clock)
+                        keys = event.getKeys(['f', 'l', 'h', 'c', 'escape'])
                         if keys:
-                            key, rt = keys[0]
-                            if key == 'escape':
-                                GAZE_SHARING_ACTIVE = False
-                                sync_client.send_message('end_experiment')
-                                return
+                            for key_info in keys:
+                                key = key_info[0] if isinstance(key_info, tuple) else key_info
+                                if key == 'escape':
+                                    GAZE_SHARING_ACTIVE = False
+                                    sync_client.send_message('end_experiment')
+                                    terminate_task()
+                                    return
+                                # Silently discard f, l, h, c keys
+                    
                     
                     # Check for server response (UNCHANGED)
                     resp_msg = sync_client.get_message(timeout=0.1)
@@ -1222,6 +1249,7 @@ def run_synchronized_experiment():
             keys = event.getKeys(['escape'])
             if 'escape' in keys:
                 sync_client.send_message('end_experiment')
+                terminate_task()
                 break
     
     # Save data
