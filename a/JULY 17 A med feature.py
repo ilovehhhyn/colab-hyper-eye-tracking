@@ -703,8 +703,8 @@ def update_local_gaze_display():
             local_gaze_stats['valid_gaze_data'] += 1
             
             # Convert coordinates and update display
-            gaze_x = -(gaze_data[0] - scn_width/2 + 50)
-            gaze_y = -(scn_height/2 - gaze_data[1] + 200)
+            gaze_x = (gaze_data[0] - scn_width/2 )
+            gaze_y = (scn_height/2 - gaze_data[1] )
             
             if True: # abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                 local_gaze_marker.setPos([gaze_x, gaze_y])
@@ -730,8 +730,8 @@ def update_remote_gaze_display():
     
     if remote_gaze_data.get('valid', False):
         try:
-            gaze_x = (1.2 * remote_gaze_data['x'] - scn_width/2 + 400 - 60)
-            gaze_y = (scn_height/2 - 1.2 * remote_gaze_data['y'] + 200 - 25)
+            gaze_x = (remote_gaze_data['x'] - scn_width/2 )
+            gaze_y = (scn_height/2 - remote_gaze_data['y'])
             
             remote_gaze_marker.setPos([gaze_x, gaze_y])
             
@@ -1089,6 +1089,13 @@ def run_synchronized_experiment():
             
             win.clearBuffer()
             
+
+            
+            # Draw grid
+            draw_study_grid()
+            stage_text.setText(f"Trial {current_trial} - Study the grid ({5.0 - stage_clock.getTime():.1f}s)")
+            stage_text.draw()
+
             # Draw gaze markers (only when sharing is active)
             if GAZE_SHARING_ACTIVE:
                 local_gaze_marker.draw()
@@ -1096,11 +1103,6 @@ def run_synchronized_experiment():
                 if remote_gaze_data.get('valid', False):
                     remote_gaze_marker.draw()
                     remote_gaze_sparkle1.draw()
-            
-            # Draw grid
-            draw_study_grid()
-            stage_text.setText(f"Trial {current_trial} - Study the grid ({5.0 - stage_clock.getTime():.1f}s)")
-            stage_text.draw()
             
             win.flip()
 
