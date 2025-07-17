@@ -1091,6 +1091,11 @@ def run_synchronized_experiment():
             update_remote_gaze_display()
             
             win.clearBuffer()
+
+            # Draw grid
+            draw_study_grid()
+            stage_text.setText(f"Trial {current_trial} - Study the grid ({5.0 - stage_clock.getTime():.1f}s)")
+            stage_text.draw()
             
             # Draw gaze markers (only when sharing is active)
             if GAZE_SHARING_ACTIVE:
@@ -1099,12 +1104,7 @@ def run_synchronized_experiment():
                 if remote_gaze_data.get('valid', False):
                     remote_gaze_marker.draw()
                     remote_gaze_sparkle1.draw()
-            
-            # Draw grid
-            draw_study_grid()
-            stage_text.setText(f"Trial {current_trial} - Study the grid ({5.0 - stage_clock.getTime():.1f}s)")
-            stage_text.draw()
-            
+                        
             win.flip()
             
             keys = event.getKeys(['escape'])
