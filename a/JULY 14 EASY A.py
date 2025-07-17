@@ -703,8 +703,8 @@ def update_local_gaze_display():
             local_gaze_stats['valid_gaze_data'] += 1
             
             # Convert coordinates and update display
-            gaze_x = -(gaze_data[0] - scn_width/2 + 50)
-            gaze_y = -(scn_height/2 - gaze_data[1] + 200)
+            gaze_x = (gaze_data[0] - scn_width/2 )
+            gaze_y = (scn_height/2 - gaze_data[1] )
             
             if abs(gaze_x) <= scn_width/2 and abs(gaze_y) <= scn_height/2:
                 local_gaze_marker.setPos([gaze_x, gaze_y])
@@ -730,8 +730,8 @@ def update_remote_gaze_display():
     
     if remote_gaze_data.get('valid', False):
         try:
-            gaze_x = (1.2 * remote_gaze_data['x'] - scn_width/2 + 400 - 60)
-            gaze_y = (scn_height/2 - 1.2 * remote_gaze_data['y'] + 200 - 25)
+            gaze_x = (remote_gaze_data['x'] - scn_width/2 )
+            gaze_y = (scn_height/2 - remote_gaze_data['y'])
             
             remote_gaze_marker.setPos([gaze_x, gaze_y])
             
@@ -1016,6 +1016,7 @@ def run_synchronized_experiment():
         
         keys = event.getKeys(['escape'])
         if 'escape' in keys:
+            terminate_task()
             return
     
     if not connected:
@@ -1105,6 +1106,7 @@ def run_synchronized_experiment():
             if 'escape' in keys:
                 GAZE_SHARING_ACTIVE = False
                 sync_server.send_message('end_experiment')
+                terminate_task()
                 return
         
         GAZE_SHARING_ACTIVE = False  # DEACTIVATE between stages
@@ -1162,6 +1164,7 @@ def run_synchronized_experiment():
                     if key == 'escape':
                         GAZE_SHARING_ACTIVE = False
                         sync_server.send_message('end_experiment')
+                        terminate_task()
                         return
                     elif key in ['f', 'l', 'h', 'c']:
                         server_response = key.upper()
@@ -1184,6 +1187,7 @@ def run_synchronized_experiment():
                     if key == 'escape':
                         GAZE_SHARING_ACTIVE = False
                         sync_server.send_message('end_experiment')
+                        terminate_task()
                         return
             
             # Check for client response (UNCHANGED)
