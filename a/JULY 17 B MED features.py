@@ -1089,6 +1089,7 @@ def run_synchronized_experiment():
                     if 'escape' in keys:
                         GAZE_SHARING_ACTIVE = False
                         sync_client.send_message('end_experiment')
+                        terminate_task()
                         return
                 
                 GAZE_SHARING_ACTIVE = False
@@ -1145,6 +1146,7 @@ def run_synchronized_experiment():
                             if key == 'escape':
                                 GAZE_SHARING_ACTIVE = False
                                 sync_client.send_message('end_experiment')
+                                terminate_task()
                                 return
                             elif key in ['f', 'l', 'h', 'c']:
                                 client_response = key.upper()
@@ -1172,6 +1174,7 @@ def run_synchronized_experiment():
                                 if key == 'escape':
                                     GAZE_SHARING_ACTIVE = False
                                     sync_client.send_message('end_experiment')
+                                    terminate_task()
                                     return
                                 # Silently discard f, l, h, c keys
 
@@ -1268,6 +1271,7 @@ def run_synchronized_experiment():
             keys = event.getKeys(['escape'])
             if 'escape' in keys:
                 sync_client.send_message('end_experiment')
+                terminate_task()
                 break
     
     # Save data
