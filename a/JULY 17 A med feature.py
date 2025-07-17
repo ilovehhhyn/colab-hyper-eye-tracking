@@ -1121,6 +1121,9 @@ def run_synchronized_experiment():
         
         # Reset target square color for new trial
         target_square_color = 'red'
+        event.clearEvents()  # Clear any leftover keypresses
+
+        
         
         sync_server.send_message('stage_response', {
             'trial_number': current_trial,
@@ -1189,27 +1192,34 @@ def run_synchronized_experiment():
                             'response': server_response,
                             'rt': server_rt
                         })
+                        time.sleep(0.001) 
             else:
                 # Still check for escape even after responding
-                keys = event.getKeys(['escape'])
-                if keys and 'escape' in keys:
-                    GAZE_SHARING_ACTIVE = False
-                    sync_server.send_message('end_experiment')
-                    return
+                keys = event.getKeys(['f', 'l', 'h', 'c', 'escape'])
+                if keys:
+                    for key_info in keys:
+                        key = key_info[0] if isinstance(key_info, tuple) else key_info
+                        if key == 'escape':
+                            GAZE_SHARING_ACTIVE = False
+                            sync_client.send_message('end_experiment')
+                            return
+                        # Silently discard f, l, h, c keys
             
             # Check for client response
-            resp_msg = sync_server.wait_for_response('response_update', timeout=0.1)
-            if resp_msg and resp_msg.get('data', {}).get('responder') == 'client':
-                if not response_received['client']:
-                    client_response = resp_msg['data']['response']
-                    response_received['client'] = True
-                    
-                    # Check if this is the first response
-                    if first_responder is None:
-                        first_responder = 'client'
-                        first_response = client_response
-                        target_square_color = 'green'  # Turn square green!
-                        print("A: First response (from client) detected - square turned green")
+            resp_msg = sync_server.get_message(timeout=0.1)
+            if resp_msg and resp_msg.get('type') == 'response_update':
+                resp_data = resp_msg.get('data', {})
+                if resp_data.get('responder') == 'client':
+                    if not response_received['client']:
+                        client_response = resp_msg['data']['response']
+                        response_received['client'] = True
+                        
+                        # Check if this is the first response
+                        if first_responder is None:
+                            first_responder = 'client'
+                            first_response = client_response
+                            target_square_color = 'green'  # Turn square green!
+                            print("A: First response (from client) detected - square turned green")
         
         GAZE_SHARING_ACTIVE = False  # DEACTIVATE between stages
         
