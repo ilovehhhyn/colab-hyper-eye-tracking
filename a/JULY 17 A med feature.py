@@ -1019,6 +1019,7 @@ def run_synchronized_experiment():
         
         keys = event.getKeys(['escape'])
         if 'escape' in keys:
+            terminate_task()
             return
     
     if not connected:
@@ -1112,6 +1113,7 @@ def run_synchronized_experiment():
             if 'escape' in keys:
                 GAZE_SHARING_ACTIVE = False
                 sync_server.send_message('end_experiment')
+                terminate_task()
                 return
         
         GAZE_SHARING_ACTIVE = False  # DEACTIVATE between stages
@@ -1124,8 +1126,6 @@ def run_synchronized_experiment():
         # Reset target square color for new trial
         target_square_color = 'red'
         event.clearEvents()  # Clear any leftover keypresses
-
-        
         
         sync_server.send_message('stage_response', {
             'trial_number': current_trial,
@@ -1176,6 +1176,7 @@ def run_synchronized_experiment():
                     if key == 'escape':
                         GAZE_SHARING_ACTIVE = False
                         sync_server.send_message('end_experiment')
+                        terminate_task()
                         return
                     elif key in ['f', 'l', 'h', 'c']:
                         server_response = key.upper()
@@ -1204,6 +1205,7 @@ def run_synchronized_experiment():
                         if key == 'escape':
                             GAZE_SHARING_ACTIVE = False
                             sync_client.send_message('end_experiment')
+                            terminate_task()
                             return
                         # Silently discard f, l, h, c keys
             
