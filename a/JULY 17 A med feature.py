@@ -588,14 +588,14 @@ class RobustSyncServer:
         except queue.Empty:
             return None
             
-    # def wait_for_response(self, expected_type, timeout=5):
-    #     """Wait for a specific type of response from client"""
-    #     start_time = time.perf_counter()
-    #     while time.perf_counter() - start_time < timeout:
-    #         message = self.get_message(timeout=0.001)
-    #         if message and message.get('type') == expected_type:
-    #             return message
-    #     return None
+    def wait_for_response(self, expected_type, timeout=5):
+        """Wait for a specific type of response from client"""
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < timeout:
+            message = self.get_message(timeout=0.001)
+            if message and message.get('type') == expected_type:
+                return message
+        return None
 
     def wait_for_message(self, expected_type, timeout=30):
     """Wait for specific message with longer timeout"""
@@ -1022,7 +1022,7 @@ def run_synchronized_experiment():
             sync_server.send_message('ping', {'server_ready': True})
         
         # Check for pong
-        pong = sync_server.wait_for_message('pong', timeout=0.5)
+        pong = sync_server.wait_for_response('pong', timeout=0.5)
         if pong:
             connected = True
             print("A: Computer B connected!")
@@ -1044,7 +1044,7 @@ def run_synchronized_experiment():
     
     # Start experiment
     sync_server.send_message('start_experiment', {'n_trials': total_trials})
-    ack = sync_server.wait_for_message('ack_start', timeout=10)
+    ack = sync_server.wait_for_response('ack_start', timeout=10)
     
     if not ack:
         print("A: No start acknowledgment received")
@@ -1094,7 +1094,7 @@ def run_synchronized_experiment():
         })
         
         # Wait for sync
-        sync_ack = sync_server.wait_for_message('stage_sync_ack', timeout=10)
+        sync_ack = sync_server.wait_for_response('stage_sync_ack', timeout=10)
         if not sync_ack:
             print("A: Warning - No sync ack for grid display")
         
@@ -1148,7 +1148,7 @@ def run_synchronized_experiment():
             'stage': 'response'
         })
         
-        sync_ack = sync_server.wait_for_message('stage_sync_ack', timeout=10)
+        sync_ack = sync_server.wait_for_response('stage_sync_ack', timeout=10)
         if not sync_ack:
             print("A: Warning - No sync ack for response")
         
@@ -1260,7 +1260,7 @@ def run_synchronized_experiment():
             'correct_category': correct_category
         })
         
-        sync_ack = sync_server.wait_for_message('stage_sync_ack', timeout=10)
+        sync_ack = sync_server.wait_for_response('stage_sync_ack', timeout=10)
         if not sync_ack:
             print("A: Warning - No sync ack for feedback")
         
