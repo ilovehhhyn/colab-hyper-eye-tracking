@@ -574,6 +574,9 @@ class RobustSyncServer:
                 print(message)
                 self.message_queue.put(message)
                 print(f"A: Received {message.get('type', 'unknown')}")
+                # Auto-respond to ping
+                if message.get('type') == 'ping':
+                    self.send_message('pong', {'client_ready': True})
                 
             except socket.timeout:
                 continue
