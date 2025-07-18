@@ -1231,7 +1231,7 @@ def run_synchronized_experiment():
                 resp_data = resp_msg.get('data', {})
                 if resp_data.get('responder') == 'client':
                     if not response_received['client']:
-                        client_response = resp_msg['data']['response']
+                        # client_response = resp_msg['data']['response']
                         response_received['client'] = True
                         
                         # Check if this is the first response
