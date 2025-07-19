@@ -570,10 +570,9 @@ class RobustSyncServer:
                 message = json.loads(data.decode('utf-8'))
                 message['sender_addr'] = addr
                 message['receipt_time'] = receipt_time
-                print(f"A: Received message {message}")
-                print(message)
+#                print(f"A: Received message {message}")
                 self.message_queue.put(message)
-                print(f"A: Received {message.get('type', 'unknown')}")
+#                print(f"A: Received {message.get('type', 'unknown')}")
                 # Auto-respond to ping
                 if message.get('type') == 'ping':
                     self.send_message('pong', {'client_ready': True})
@@ -595,26 +594,26 @@ class RobustSyncServer:
         """Wait for a specific type of response from client"""
         start_time = time.perf_counter()
         while time.perf_counter() - start_time < timeout:
-            message = self.get_message(timeout=0.001)
+            message = self.get_message(timeout=0.01)
             if message and message.get('type') == expected_type:
                 return message
         return None
 
     def wait_for_message(self, expected_type, timeout=30):
-    """Wait for specific message with longer timeout"""
-    start_time = time.perf_counter()
-    while time.perf_counter() - start_time < timeout:
-        try:
-            message = self.message_queue.get(timeout=0.01)
-            if message.get('type') == expected_type:
-                return message
-            else:
-                # Put it back if it's not what we want
-                self.message_queue.put(message)
-        except queue.Empty:
-            continue
-    print(f"B: Timeout waiting for {expected_type}")
-    return None
+        """Wait for specific message with longer timeout"""
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < timeout:
+            try:
+                message = self.message_queue.get(timeout=1)
+                if message.get('type') == expected_type:
+                    return message
+                else:
+                    # Put it back if it's not what we want
+                    self.message_queue.put(message)
+            except queue.Empty:
+                continue
+        print(f"B: Timeout waiting for {expected_type}")
+        return None
         
     def close(self):
         """Close the server"""
@@ -1164,7 +1163,7 @@ def run_synchronized_experiment():
         
         response_clock = core.Clock()
         response_received = {'server': False, 'client': False}
-        
+            
         while not (response_received['server'] and response_received['client']):
             update_local_gaze_display()
             update_remote_gaze_display()
@@ -1214,7 +1213,7 @@ def run_synchronized_experiment():
                             'response': server_response,
                             'rt': server_rt
                         })
-                        time.sleep(0.001) 
+
             else:
                 # Still check for escape even after responding
                 keys = event.getKeys(['f', 'l', 'h', 'c', 'escape'])
@@ -1234,7 +1233,7 @@ def run_synchronized_experiment():
                 resp_data = resp_msg.get('data', {})
                 if resp_data.get('responder') == 'client':
                     if not response_received['client']:
-                        # client_response = resp_msg['data']['response']
+                        client_response = resp_msg['data']['response']
                         response_received['client'] = True
                         
                         # Check if this is the first response
@@ -1243,7 +1242,7 @@ def run_synchronized_experiment():
                             first_response = client_response
                             target_square_color = 'green'  # Turn square green!
                             print("A: First response (from client) detected - square turned green")
-        
+
         GAZE_SHARING_ACTIVE = False  # DEACTIVATE between stages
         
         # ========== STAGE 3: FEEDBACK ==========
@@ -1263,9 +1262,11 @@ def run_synchronized_experiment():
             'correct_category': correct_category
         })
         
-        sync_ack = sync_server.wait_for_response('stage_sync_ack', timeout=10)
+        sync_ack = sync_server.wait_for_message('stage_sync_ack', timeout=10)
         if not sync_ack:
             print("A: Warning - No sync ack for feedback")
+                        
+                
         
         # Display feedback for 1 second WITH gaze sharing (UNCHANGED)
         feedback_clock = core.Clock()
