@@ -1180,19 +1180,23 @@ def run_synchronized_experiment():
 
                     
                     # Check for server response
-                    resp_msg = sync_client.get_message(timeout=0.1)
-                    if resp_msg and resp_msg.get('type') == 'response_update':
-                        resp_data = resp_msg.get('data', {})
-                        if resp_data.get('responder') == 'server':
-                            if not response_received['server']:
-                                response_received['server'] = True
-                                
-                                # Check if this is the first response
-                                if first_responder is None:
-                                    first_responder = 'server'
-                                    first_response = resp_data.get('response')
-                                    target_square_color = 'green'  # Turn square green!
-                                    print("B: First response (from server) detected - square turned green")
+                    resp_msg = sync_client.wait(timeout=0.1)
+                    if resp_msg:
+                        if resp_msg.get('type') == 'response_update':
+                            resp_data = resp_msg.get('data', {})
+                            if resp_data.get('responder') == 'server':
+                                if not response_received['server']:
+                                    response_received['server'] = True
+                                    
+                                    # Check if this is the first response
+                                    if first_responder is None:
+                                        first_responder = 'server'
+                                        first_response = resp_data.get('response')
+                                        target_square_color = 'green'  # Turn square green!
+                                        print("B: First response (from server) detected - square turned green")
+                        else:
+                            sync_client.message_queue.put(resp_msg)
+                        
                 
                 GAZE_SHARING_ACTIVE = False
                 
